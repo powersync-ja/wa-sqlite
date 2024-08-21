@@ -1453,7 +1453,7 @@ declare module "@journeyapps/wa-sqlite/src/VFS.js" {
 }
 
 /** @ignore */
-declare module "wa-sqlite/src/examples/ArrayModule.js" {
+declare module "@journeyapps/wa-sqlite/src/examples/ArrayModule.js" {
   export class ArrayModule {
     /**
      * @param {SQLiteAPI} sqlite3
@@ -1596,7 +1596,7 @@ declare module "wa-sqlite/src/examples/ArrayModule.js" {
 
 /** @ignore */
 declare module "@journeyapps/wa-sqlite/src/examples/ArrayAsyncModule.js" {
-  import { ArrayModule } from "wa-sqlite/src/examples/ArrayModule.js";
+  import { ArrayModule } from "@journeyapps/wa-sqlite/src/examples/ArrayModule.js";
   export class ArrayAsyncModule extends ArrayModule {
     /**
      * @param {function} f
@@ -1644,7 +1644,7 @@ declare module "@journeyapp/wa-sqlite/src/examples/IDBVersionedVFS.js" {
 }
 
 /** @ignore */
-declare module "@journeyapp/wa-sqlite/src/examples/OriginPrivatefileSystemVFS.js" {
+declare module "@journeyapp/wa-sqlite/src/examples/OriginPrivateFileSystemVFS.js" {
   import * as VFS from "@journeyapps/wa-sqlite/src/VFS.js";
   export class OriginPrivateFileSystemVFS extends VFS.Base {
     close(): Promise<void>;
@@ -1652,7 +1652,7 @@ declare module "@journeyapp/wa-sqlite/src/examples/OriginPrivatefileSystemVFS.js
 }
 
 /** @ignore */
-declare module "wa-sqlite/src/examples/IDBMinimalVFS.js" {
+declare module "@journeyapps/wa-sqlite/src/examples/IDBMinimalVFS.js" {
   import * as VFS from "@journeyapps/wa-sqlite/src/VFS.js";
   export class IDBMinimalVFS extends VFS.Base {
     /**
@@ -1670,60 +1670,7 @@ declare module "wa-sqlite/src/examples/IDBMinimalVFS.js" {
 }
 
 /** @ignore */
-declare module "@journeyapps/wa-sqlite/src/examples/IndexedDbVFS.js" {
-  import * as VFS from "@journeyapps/wa-sqlite/src/VFS.js";
-  export class IndexedDbVFS extends VFS.Base {
-    /**
-     * @param {string} idbName Name of IndexedDB database.
-     */
-    constructor(idbName?: string);
-    name: string;
-    mapIdToFile: Map<any, any>;
-    cacheSize: number;
-    db: any;
-    close(): Promise<void>;
-    /**
-     * Delete a file from IndexedDB.
-     * @param {string} name
-     */
-    deleteFile(name: string): Promise<void>;
-    /**
-     * Forcibly clear an orphaned file lock.
-     * @param {string} name
-     */
-    forceClearLock(name: string): Promise<void>;
-    _getStore(mode?: string): any;
-    /**
-     * Returns the key for file metadata.
-     * @param {string} name
-     * @returns
-     */
-    _metaKey(name: string): string;
-    /**
-     * Returns the key for file block data.
-     * @param {string} name
-     * @param {number} index
-     * @returns
-     */
-    _blockKey(name: string, index: number): string;
-    _getBlock(store: any, file: any, index: any): Promise<any>;
-    _putBlock(store: any, file: any, index: any, blockData: any): void;
-    _purgeCache(store: any, file: any, size?: number): void;
-    _flushCache(store: any, file: any): Promise<void>;
-    _sync(file: any): Promise<void>;
-    /**
-     * Helper function that deletes all keys greater or equal to `key`
-     * provided they start with `prefix`.
-     * @param {string} key
-     * @param {string} [prefix]
-     * @returns
-     */
-    _delete(key: string, prefix?: string): Promise<any>;
-  }
-}
-
-/** @ignore */
-declare module "wa-sqlite/src/examples/MemoryVFS.js" {
+declare module "@journeyapps/wa-sqlite/src/examples/MemoryVFS.js" {
   import * as VFS from "@journeyapps/wa-sqlite/src/VFS.js";
   export class MemoryVFS extends VFS.Base {
     name: string;
@@ -1733,13 +1680,13 @@ declare module "wa-sqlite/src/examples/MemoryVFS.js" {
 }
 
 /** @ignore */
-declare module "wa-sqlite/src/examples/MemoryAsyncVFS.js" {
-  import { MemoryVFS } from "wa-sqlite/src/examples/MemoryVFS.js";
+declare module "@journeyapps/wa-sqlite/src/examples/MemoryAsyncVFS.js" {
+  import { MemoryVFS } from "@journeyapps/wa-sqlite/src/examples/MemoryVFS.js";
   export class MemoryAsyncVFS extends MemoryVFS {}
 }
 
 /** @ignore */
-declare module "wa-sqlite/src/examples/tag.js" {
+declare module "@journeyapps/wa-sqlite/src/examples/tag.js" {
   /**
    * Template tag builder. This function creates a tag with an API and
    * database from the same module, then the tag can be used like this:
