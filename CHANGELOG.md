@@ -1,4 +1,4 @@
-# @powersync/wa-sqlite
+# @journeyapps/wa-sqlite
 
 ## 0.2.1
 
