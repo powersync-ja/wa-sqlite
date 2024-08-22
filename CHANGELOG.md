@@ -1,5 +1,16 @@
 # @journeyapps/wa-sqlite
 
+## 0.3.0
+
+### Minor Changes
+
+- b0124d4: Update powersync-sqlite-core to v0.2.0
+- b0124d4: Rename back to @journeyapps/wa-sqlite
+
+### Patch Changes
+
+- b0124d4: Fix some type declarations
+
 ## 0.2.1
 
 ### Patch Changes
