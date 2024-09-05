@@ -505,6 +505,7 @@ export function Factory(Module) {
     return async function(zFilename, flags, zVfs) {
       flags = flags || SQLite.SQLITE_OPEN_CREATE | SQLite.SQLITE_OPEN_READWRITE;
       zVfs = createUTF8(zVfs);
+      Module.ccall('setup_powersync', 'int', []);
       try {
         // Allow retry operations.
         const rc = await retry(() => f(zFilename, tmpPtr[0], flags, zVfs));

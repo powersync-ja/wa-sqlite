@@ -161,10 +161,10 @@ declare interface SQLitePrepareOptions {
  * // 'wa-sqlite-async.mjs' (asynchronous). You should only
  * // use the asynchronous build if you plan to use an
  * // asynchronous VFS or module.
- * import SQLiteESMFactory from 'wa-sqlite/dist/wa-sqlite.mjs';
+ * import SQLiteESMFactory from '@journeyapps/wa-sqlite/dist/wa-sqlite.mjs';
  *
  * // Import the Javascript API wrappers.
- * import * as SQLite from 'wa-sqlite';
+ * import * as SQLite from '@journeyapps/wa-sqlite';
  *
  * // Use an async function to simplify Promise handling.
  * (async function() {
@@ -1070,8 +1070,8 @@ declare module "@journeyapps/wa-sqlite/src/sqlite-constants.js" {
   export const SQLITE_PREPARE_NO_VTAB: 0x04;
 }
 
-declare module 'wa-sqlite' {
-  export * from 'wa-sqlite/src/sqlite-constants.js';
+declare module '@journeyapps/wa-sqlite' {
+  export * from '@journeyapps/wa-sqlite/src/sqlite-constants.js';
 
   /**
    * @ignore
@@ -1217,8 +1217,8 @@ declare module "@journeyapps/wa-sqlite/src/VFS.js" {
 }
 
 /** @ignore */
-declare module 'wa-sqlite/src/examples/IndexedDbVFS.js' {
-  import * as VFS from "wa-sqlite/src/VFS.js";
+declare module '@journeyapps/wa-sqlite/src/examples/IndexedDbVFS.js' {
+  import * as VFS from "@journeyapps/wa-sqlite/src/VFS.js";
   export class IndexedDbVFS extends VFS.Base {
     /**
      * @param {string} idbName Name of IndexedDB database.
@@ -1270,8 +1270,8 @@ declare module 'wa-sqlite/src/examples/IndexedDbVFS.js' {
 }
 
 /** @ignore */
-declare module 'wa-sqlite/src/examples/MemoryVFS.js' {
-  import * as VFS from "wa-sqlite/src/VFS.js";
+declare module '@journeyapps/wa-sqlite/src/examples/MemoryVFS.js' {
+  import * as VFS from "@journeyapps/wa-sqlite/src/VFS.js";
   /** @ignore */
   export class MemoryVFS extends VFS.Base {
     name: string;
