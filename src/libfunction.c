@@ -1,37 +1,70 @@
-// Copyright 2021 Roy T. Hashimoto. All Rights Reserved.
+// Copyright 2024 Roy T. Hashimoto. All Rights Reserved.
+#include <stdio.h>
+#include <string.h>
+#include <strings.h>
 #include <emscripten.h>
 #include <sqlite3.h>
 
-extern void jsFunc(void* pApp, sqlite3_context* pContext, int iCount, sqlite3_value** ppValues);
-extern void jsStep(void* pApp, sqlite3_context* pContext, int iCount, sqlite3_value** ppValues);
-extern void jsFinal(void* pApp, sqlite3_context* pContext);
+#include "libadapters.h"
 
-static void xFunc(sqlite3_context* pContext, int iCount, sqlite3_value** ppValues) {
-  jsFunc(sqlite3_user_data(pContext), pContext, iCount, ppValues);
+extern void onTableChangeCallback(sqlite3*, int, const char *, int);
+
+EMSCRIPTEN_KEEPALIVE
+void on_tables_changed(void *db, int opType, char const *dbName,
+                        char const *tableName, sqlite3_int64 rowId) {
+  onTableChangeCallback((sqlite3 *) db, opType, tableName, rowId);
 }
 
-static void xStep(sqlite3_context* pContext, int iCount, sqlite3_value** ppValues) {
-  jsStep(sqlite3_user_data(pContext), pContext, iCount, ppValues);
+void register_table_update_hook(sqlite3 *db) {
+    sqlite3_update_hook(db, on_tables_changed,
+                      (void *)(db));
+}
+enum {
+  xFunc,
+  xStep,
+  xFinal
+};
+
+#define FUNC_JS(SIGNATURE, KEY, METHOD, ...) \
+  (asyncFlags & (1 << METHOD) ? \
+    SIGNATURE##_async(KEY, #METHOD, __VA_ARGS__) : \
+    SIGNATURE(KEY, #METHOD, __VA_ARGS__))
+
+static void libfunction_xFunc(sqlite3_context* ctx, int argc, sqlite3_value** argv) {
+  const void* pApp = sqlite3_user_data(ctx);
+  const int asyncFlags = pApp ? *(int *)pApp : 0;
+  FUNC_JS(vpppip, pApp, xFunc, ctx, argc, argv);
 }
 
-static void xFinal(sqlite3_context* pContext) {
-  jsFinal(sqlite3_user_data(pContext), pContext);
+static void libfunction_xStep(sqlite3_context* ctx, int argc, sqlite3_value** argv) {
+  const void* pApp = sqlite3_user_data(ctx);
+  const int asyncFlags = pApp ? *(int *)pApp : 0;
+  FUNC_JS(vpppip, pApp, xStep, ctx, argc, argv);
 }
 
-int EMSCRIPTEN_KEEPALIVE create_function(
+static void libfunction_xFinal(sqlite3_context* ctx) {
+  const void* pApp = sqlite3_user_data(ctx);
+  const int asyncFlags = pApp ? *(int *)pApp : 0;
+  FUNC_JS(vppp, pApp, xFinal, ctx);
+}
+
+int EMSCRIPTEN_KEEPALIVE libfunction_create_function(
   sqlite3* db,
   const char* zFunctionName,
   int nArg,
   int eTextRep,
   void* pApp,
-  int functionType) {
-  return sqlite3_create_function(
+  void* xFunc,
+  void* xStep,
+  void* xFinal) {
+  return sqlite3_create_function_v2(
     db,
     zFunctionName,
     nArg,
     eTextRep,
     pApp,
-    functionType == 0 ? &xFunc : 0,
-    functionType == 0 ? 0 : &xStep,
-    functionType == 0 ? 0 : &xFinal);
+    xFunc ? &libfunction_xFunc : NULL,
+    xStep ? &libfunction_xStep : NULL,
+    xFinal ? &libfunction_xFinal : NULL,
+    &sqlite3_free);
 }

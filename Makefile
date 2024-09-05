@@ -1,4 +1,5 @@
 # dependencies
+# TODO this should be 3.46.0, but there are build errors
 SQLITE_VERSION = version-3.44.0
 SQLITE_TARBALL_URL = https://www.sqlite.org/src/tarball/sqlite.tar.gz?r=${SQLITE_VERSION}
 
@@ -10,9 +11,9 @@ EXTENSION_FUNCTIONS_SHA3 = ee39ddf5eaa21e1d0ebcbceeab42822dd0c4f82d8039ce173fd48
 CFILES = \
 	sqlite3.c \
 	extension-functions.c \
+	main.c \
 	libauthorizer.c \
 	libfunction.c \
-	libmodule.c \
 	libprogress.c \
 	libvfs.c \
 	$(CFILES_EXTRA)
@@ -20,7 +21,6 @@ CFILES = \
 JSFILES = \
 	src/libauthorizer.js \
 	src/libfunction.js \
-	src/libmodule.js \
 	src/libprogress.js \
 	src/libvfs.js
 
@@ -31,6 +31,7 @@ vpath %.c deps/$(SQLITE_VERSION)
 EXPORTED_FUNCTIONS = src/exported_functions.json
 EXPORTED_RUNTIME_METHODS = src/extra_exported_runtime_methods.json
 ASYNCIFY_IMPORTS = src/asyncify_imports.json
+ASYNCIFY_EXPORTS = src/asyncify_exports.json
 
 # intermediate files
 OBJ_FILES_DEBUG = $(patsubst %.c,tmp/obj/debug/%.o,$(CFILES))
@@ -69,7 +70,6 @@ EMFLAGS_DEBUG = \
 EMFLAGS_DIST = \
 	-Oz \
 	-flto \
-	--closure 1 \
 	$(EMFLAGS_COMMON)
 
 EMFLAGS_INTERFACES = \
@@ -77,12 +77,12 @@ EMFLAGS_INTERFACES = \
 	-s EXPORTED_RUNTIME_METHODS=@$(EXPORTED_RUNTIME_METHODS)
 
 EMFLAGS_LIBRARIES = \
-	--js-library src/libauthorizer.js \
-	--js-library src/libfunction.js \
-	--js-library src/libmodule.js \
+	--js-library src/libadapters.js \
 	--js-library src/libtableupdates.js \
-	--js-library src/libprogress.js \
-	--js-library src/libvfs.js
+	--post-js src/libauthorizer.js \
+	--post-js src/libfunction.js \
+	--post-js src/libprogress.js \
+	--post-js src/libvfs.js
 
 EMFLAGS_ASYNCIFY_COMMON = \
 	-s ASYNCIFY \
@@ -95,6 +95,11 @@ EMFLAGS_ASYNCIFY_DEBUG = \
 EMFLAGS_ASYNCIFY_DIST = \
 	$(EMFLAGS_ASYNCIFY_COMMON) \
 	-s ASYNCIFY_STACK_SIZE=16384
+
+EMFLAGS_JSPI = \
+	-s ASYNCIFY=2 \
+	-s ASYNCIFY_IMPORTS=@src/asyncify_imports.json \
+	-s ASYNCIFY_EXPORTS=@src/asyncify_exports.json
 
 # https://www.sqlite.org/compile.html
 WASQLITE_DEFINES = \
@@ -146,10 +151,24 @@ deps/$(SQLITE_VERSION)/sqlite3.h deps/$(SQLITE_VERSION)/sqlite3.c:
 	mkdir -p deps/$(SQLITE_VERSION)
 	(cd deps/$(SQLITE_VERSION); ../../cache/$(SQLITE_VERSION)/configure --enable-all && make sqlite3.c)
 
+
+ifeq ($(shell uname), Darwin)
+    OPENSSL_CHECK_CMD := openssl dgst -sha3-256 -r cache/$(EXTENSION_FUNCTIONS) | sed -e 's/ .*//' > deps/sha3
+else
+    OPENSSL_CHECK_CMD := openssl dgst -sha3-256 -r cache/$(EXTENSION_FUNCTIONS) | sed -e 's/\s.*//' > deps/sha3
+endif
+
+ifeq ($(shell uname), Darwin)
+	HASH_CHECK_CMD := echo $(EXTENSION_FUNCTIONS_SHA3) | cmp /dev/stdin deps/sha3
+else
+	HASH_CHECK_CMD := echo $(EXTENSION_FUNCTIONS_SHA3) | cmp deps/sha3
+endif
+
+
 deps/$(EXTENSION_FUNCTIONS): cache/$(EXTENSION_FUNCTIONS)
 	mkdir -p deps
-	openssl dgst -sha3-256 -r cache/$(EXTENSION_FUNCTIONS) | sed -e 's/\s.*//' > deps/sha3
-	echo $(EXTENSION_FUNCTIONS_SHA3) | cmp deps/sha3
+	bash -c "$(OPENSSL_CHECK_CMD)"
+	bash -c "$(HASH_CHECK_CMD)"
 	rm -rf deps/sha3 $@
 	cp 'cache/$(EXTENSION_FUNCTIONS)' $@
 
@@ -166,15 +185,22 @@ tmp/obj/dist/%.o: %.c
 	mkdir -p tmp/obj/dist
 	$(EMCC) $(CFLAGS_DIST) $(WASQLITE_DEFINES) $^ -c -o $@
 
+# Use Linker true command switch which differs per OS
+ifeq ($(shell uname), Darwin)
+    TRUE_CMD := /usr/bin/true
+else
+    TRUE_CMD := /bin/true
+endif
+
 $(RS_DEBUG_BC): FORCE
 	mkdir -p tmp/bc/dist
 	cd $(RS_LIB_DIR); \
-	RUSTFLAGS="--emit=llvm-bc -C linker=/bin/true" cargo build -p powersync_loadable --profile wasm --no-default-features --features "powersync_core/static powersync_core/omit_load_extension sqlite_nostd/static sqlite_nostd/omit_load_extension" -Z build-std=panic_abort,core,alloc --target $(RS_WASM_TGT)
+	RUSTFLAGS="--emit=llvm-bc -C linker=${TRUE_CMD}" cargo build -p powersync_loadable --profile wasm --no-default-features --features "powersync_core/static powersync_core/omit_load_extension sqlite_nostd/static sqlite_nostd/omit_load_extension" -Z build-std=panic_abort,core,alloc --target $(RS_WASM_TGT)
 
 $(RS_RELEASE_BC): FORCE
 	mkdir -p tmp/bc/dist
 	cd $(RS_LIB_DIR); \
-	RUSTFLAGS="--emit=llvm-bc -C linker=/bin/true" cargo build -p powersync_loadable --profile wasm --no-default-features --features "powersync_core/static powersync_core/omit_load_extension sqlite_nostd/static sqlite_nostd/omit_load_extension" -Z build-std=panic_abort,core,alloc --target $(RS_WASM_TGT)
+	RUSTFLAGS="--emit=llvm-bc -C linker=${TRUE_CMD}" cargo build -p powersync_loadable --profile wasm --no-default-features --features "powersync_core/static powersync_core/omit_load_extension sqlite_nostd/static sqlite_nostd/omit_load_extension" -Z build-std=panic_abort,core,alloc --target $(RS_WASM_TGT)
 
 
 ## debug
@@ -183,14 +209,14 @@ clean-debug:
 	rm -rf debug
 
 .PHONY: debug
-debug: debug/wa-sqlite.mjs debug/wa-sqlite-async.mjs
+debug: debug/wa-sqlite.mjs debug/wa-sqlite-async.mjs debug/wa-sqlite-jspi.mjs
 
 debug/wa-sqlite.mjs: $(OBJ_FILES_DEBUG) $(RS_DEBUG_BC) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS)
 	mkdir -p debug
 	$(EMCC) $(EMFLAGS_DEBUG) \
 	  $(EMFLAGS_INTERFACES) \
 	  $(EMFLAGS_LIBRARIES) \
-		$(RS_WASM_TGT_DIR)/debug/deps/*.bc \
+	  $(RS_WASM_TGT_DIR)/debug/deps/*.bc \
 	  $(OBJ_FILES_DEBUG) *.o -o $@
 
 debug/wa-sqlite-async.mjs: $(OBJ_FILES_DEBUG) $(RS_DEBUG_BC) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS) $(ASYNCIFY_IMPORTS)
@@ -199,7 +225,7 @@ debug/wa-sqlite-async.mjs: $(OBJ_FILES_DEBUG) $(RS_DEBUG_BC) $(EXPORTED_FUNCTION
 	  $(EMFLAGS_INTERFACES) \
 	  $(EMFLAGS_LIBRARIES) \
 	  $(EMFLAGS_ASYNCIFY_DEBUG) \
-		$(RS_WASM_TGT_DIR)/debug/deps/*.bc \
+	  $(RS_WASM_TGT_DIR)/debug/deps/*.bc \
 	  $(OBJ_FILES_DEBUG) *.o -o $@
 
 ## Debug FTS builds
@@ -223,20 +249,29 @@ debug/wa-sqlite-async.mjs: $(OBJ_FILES_DEBUG) $(RS_DEBUG_BC) $(EXPORTED_FUNCTION
 # 		$(RS_WASM_TGT_DIR)/debug/deps/*.bc \
 # 	  $(OBJ_FILES_DEBUG_FTS) *.o -o $@
 
+debug/wa-sqlite-jspi.mjs: $(OBJ_FILES_DEBUG) $(JSFILES) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS) $(ASYNCIFY_IMPORTS)
+	mkdir -p debug
+	$(EMCC) $(EMFLAGS_DEBUG) \
+	  $(EMFLAGS_INTERFACES) \
+	  $(EMFLAGS_LIBRARIES) \
+	  $(EMFLAGS_JSPI) \
+	  $(RS_WASM_TGT_DIR)/wasm/deps/*.bc \
+	  $(OBJ_FILES_DEBUG) -o $@
+
 ## dist
 .PHONY: clean-dist
 clean-dist:
 	rm -rf dist
 
 .PHONY: dist
-dist: dist/wa-sqlite.mjs dist/wa-sqlite-async.mjs
+dist: dist/wa-sqlite.mjs dist/wa-sqlite-async.mjs dist/wa-sqlite-jspi.mjs
 
 dist/wa-sqlite.mjs: $(OBJ_FILES_DIST) $(RS_RELEASE_BC) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS)
 	mkdir -p dist
 	$(EMCC) $(EMFLAGS_DIST) \
 	  $(EMFLAGS_INTERFACES) \
 	  $(EMFLAGS_LIBRARIES) \
-		$(RS_WASM_TGT_DIR)/wasm/deps/*.bc \
+	  $(RS_WASM_TGT_DIR)/wasm/deps/*.bc \
 	  $(OBJ_FILES_DIST)  -o $@
 
 dist/wa-sqlite-async.mjs: $(OBJ_FILES_DIST) $(RS_RELEASE_BC) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS) $(ASYNCIFY_IMPORTS)
@@ -245,36 +280,16 @@ dist/wa-sqlite-async.mjs: $(OBJ_FILES_DIST) $(RS_RELEASE_BC) $(EXPORTED_FUNCTION
 	  $(EMFLAGS_INTERFACES) \
 	  $(EMFLAGS_LIBRARIES) \
 	  $(EMFLAGS_ASYNCIFY_DIST) \
-		$(CFLAGS_DIST) \
-		$(RS_WASM_TGT_DIR)/wasm/deps/*.bc \
-	  $(OBJ_FILES_DIST)  -o $@
+	  $(RS_WASM_TGT_DIR)/wasm/deps/*.bc \
+	  $(OBJ_FILES_DIST) -o $@
 
-FORCE: ;
+dist/wa-sqlite-jspi.mjs: $(OBJ_FILES_DIST) $(JSFILES) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS) $(ASYNCIFY_IMPORTS)
+	mkdir -p dist
+	$(EMCC) $(EMFLAGS_DIST) \
+	  $(EMFLAGS_INTERFACES) \
+	  $(EMFLAGS_LIBRARIES) \
+	  $(EMFLAGS_JSPI) \
+	  $(RS_WASM_TGT_DIR)/wasm/deps/*.bc \
+	  $(OBJ_FILES_DIST) -o $@
 
-# FTS builds
-# .PHONY: clean-dist
-# clean-dist:
-# 	rm -rf dist
-
-# .PHONY: dist
-# dist: dist/wa-sqlite.mjs dist/wa-sqlite-async.mjs
-
-# dist/wa-sqlite.mjs: $(OBJ_FILES_DIST_FTS) $(RS_RELEASE_BC) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS)
-# 	mkdir -p dist
-# 	$(EMCC) $(EMFLAGS_DIST) \
-# 	  $(EMFLAGS_INTERFACES) \
-# 	  $(EMFLAGS_LIBRARIES) \
-# 		$(RS_WASM_TGT_DIR)/wasm/deps/*.bc \
-# 	  $(OBJ_FILES_DIST_FTS)  -o $@
-
-# dist/wa-sqlite-async.mjs: $(OBJ_FILES_DIST_FTS) $(RS_RELEASE_BC) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS) $(ASYNCIFY_IMPORTS)
-# 	mkdir -p dist
-# 	$(EMCC) $(EMFLAGS_DIST) \
-# 	  $(EMFLAGS_INTERFACES) \
-# 	  $(EMFLAGS_LIBRARIES) \
-# 	  $(EMFLAGS_ASYNCIFY_DIST) \
-# 		$(CFLAGS_DIST) \
-# 		$(RS_WASM_TGT_DIR)/wasm/deps/*.bc \
-# 	  $(OBJ_FILES_DIST_FTS)  -o $@
-
-# FORCE: ;
+FORCE:
