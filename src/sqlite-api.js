@@ -266,6 +266,17 @@ export function Factory(Module) {
       return check(fname, result, mapStmtToDB.get(stmt));
     };
   })();
+
+  sqlite3.last_insert_id = (function() {
+    const fname = 'sqlite3_last_insert_rowid';
+    const f = Module.cwrap(fname, ...decl('n:n'));
+    return function(db) {
+      verifyDatabase(db);
+      const result = f(db);
+      // trace(fname, result);
+      return result;
+    };
+  })();
   
   sqlite3.close = (function() {
     const fname = 'sqlite3_close';

@@ -347,6 +347,14 @@ declare interface SQLiteAPI {
   clear_bindings(stmt: number): number;
 
   /**
+   * Get the last insert id
+   * @see https://www.sqlite.org/c3ref/changes.html
+   * @param db database pointer
+   * @returns last insert id
+   */
+  last_insert_id(db: number): number;
+
+  /**
    * Close database connection
    * @see https://www.sqlite.org/c3ref/close.html
    * @param db database pointer
@@ -1220,6 +1228,59 @@ declare module "@journeyapps/wa-sqlite/src/VFS.js" {
 declare module '@journeyapps/wa-sqlite/src/examples/IndexedDbVFS.js' {
   import * as VFS from "@journeyapps/wa-sqlite/src/VFS.js";
   export class IndexedDbVFS extends VFS.Base {
+    /**
+     * @param {string} idbName Name of IndexedDB database.
+     */
+    constructor(idbName?: string);
+    name: string;
+    mapIdToFile: Map<any, any>;
+    cacheSize: number;
+    db: any;
+    close(): Promise<void>;
+    /**
+     * Delete a file from IndexedDB.
+     * @param {string} name
+     */
+    deleteFile(name: string): Promise<void>;
+    /**
+     * Forcibly clear an orphaned file lock.
+     * @param {string} name
+     */
+    forceClearLock(name: string): Promise<void>;
+    _getStore(mode?: string): any;
+    /**
+     * Returns the key for file metadata.
+     * @param {string} name
+     * @returns
+     */
+    _metaKey(name: string): string;
+    /**
+     * Returns the key for file block data.
+     * @param {string} name
+     * @param {number} index
+     * @returns
+     */
+    _blockKey(name: string, index: number): string;
+    _getBlock(store: any, file: any, index: any): Promise<any>;
+    _putBlock(store: any, file: any, index: any, blockData: any): void;
+    _purgeCache(store: any, file: any, size?: number): void;
+    _flushCache(store: any, file: any): Promise<void>;
+    _sync(file: any): Promise<void>;
+    /**
+     * Helper function that deletes all keys greater or equal to `key`
+     * provided they start with `prefix`.
+     * @param {string} key
+     * @param {string} [prefix]
+     * @returns
+     */
+    _delete(key: string, prefix?: string): Promise<any>;
+  }
+}
+
+/** @ignore */
+declare module '@journeyapps/wa-sqlite/src/examples/IDBBatchAtomicVFS.js' {
+  import * as VFS from "@journeyapps/wa-sqlite/src/VFS.js";
+  export class IDBBatchAtomicVFS extends VFS.Base {
     /**
      * @param {string} idbName Name of IndexedDB database.
      */
