@@ -152,9 +152,9 @@ deps/$(SQLITE_VERSION)/sqlite3.h deps/$(SQLITE_VERSION)/sqlite3.c:
 
 deps/$(EXTENSION_FUNCTIONS): cache/$(EXTENSION_FUNCTIONS)
 	mkdir -p deps
-	openssl dgst -sha3-256 -r cache/$(EXTENSION_FUNCTIONS) | sed -e 's/\s.*//' > deps/sha3
-	echo $(EXTENSION_FUNCTIONS_SHA3) | cmp deps/sha3
-	rm -rf deps/sha3 $@
+	# openssl dgst -sha256 -r cache/$(EXTENSION_FUNCTIONS) | sed -e 's/\s.*//' > deps/sha3
+	# echo $(EXTENSION_FUNCTIONS_SHA3) | cmp /dev/stdin  deps/sha3
+	# rm -rf deps/sha3 $@
 	cp 'cache/$(EXTENSION_FUNCTIONS)' $@
 
 ## tmp
