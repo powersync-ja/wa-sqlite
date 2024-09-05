@@ -5,13 +5,13 @@ name: wa-sqlite CI
 
 on:
   push:
-    branches: ['master']
+    branches: ["master"]
   pull_request:
-    branches: ['master']
+    branches: ["master"]
 
 env:
-  EM_VERSION: 3.1.47
-  EM_CACHE_FOLDER: 'emsdk-cache'
+  EM_VERSION: 3.1.64
+  EM_CACHE_FOLDER: "emsdk-cache"
 
 jobs:
   build:
@@ -23,11 +23,13 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: "recursive"
       - name: Use Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-          cache: 'npm'
+          cache: "npm"
 
       - uses: browser-actions/setup-chrome@v1
         id: setup-chrome
@@ -53,6 +55,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-yarn-
       - run: yarn install
+      - name: Rust Setup
+        run: |
+          rustup toolchain install nightly-2024-05-18-x86_64-unknown-linux-gnu
+          rustup component add rust-src --toolchain nightly-2024-05-18-x86_64-unknown-linux-gnu
 
       - name: Test with checked-in WASM files
         run: yarn test

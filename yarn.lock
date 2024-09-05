@@ -294,6 +294,29 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@journeyapps/wa-sqlite@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "@journeyapps/wa-sqlite@workspace:."
+  dependencies:
+    "@changesets/cli": "npm:^2.26.2"
+    "@types/jasmine": "npm:^5.1.4"
+    "@web/dev-server": "npm:^0.4.6"
+    "@web/test-runner": "npm:^0.18.2"
+    "@web/test-runner-core": "npm:^0.13.3"
+    comlink: "npm:^4.4.1"
+    jasmine-core: "npm:^4.5.0"
+    monaco-editor: "npm:^0.34.1"
+    typedoc: "npm:^0.25.7"
+    typescript: "npm:^5.3.3"
+    web-test-runner-jasmine: "npm:^0.0.6"
+  dependenciesMeta:
+    monaco-editor@0.34.1:
+      unplugged: true
+    web-test-runner-jasmine@0.0.6:
+      unplugged: true
+  languageName: unknown
+  linkType: soft
+
 "@jridgewell/resolve-uri@npm:^3.1.0":
   version: 3.1.1
   resolution: "@jridgewell/resolve-uri@npm:3.1.1"
@@ -390,29 +413,6 @@ __metadata:
   checksum: c96381d4a37448ea280951e46233f7e541058cf57a57d4094dd4bdcaae43fa5872b5f2eb6bfb004591a68e29c5877abe3cdc210cb3588cbf20ab2877f31a7de7
   languageName: node
   linkType: hard
-
-"@powersync/wa-sqlite@workspace:.":
-  version: 0.0.0-use.local
-  resolution: "@powersync/wa-sqlite@workspace:."
-  dependencies:
-    "@changesets/cli": "npm:^2.26.2"
-    "@types/jasmine": "npm:^5.1.4"
-    "@web/dev-server": "npm:^0.4.6"
-    "@web/test-runner": "npm:^0.18.2"
-    "@web/test-runner-core": "npm:^0.13.3"
-    comlink: "npm:^4.4.1"
-    jasmine-core: "npm:^4.5.0"
-    monaco-editor: "npm:^0.34.1"
-    typedoc: "npm:^0.25.7"
-    typescript: "npm:^5.3.3"
-    web-test-runner-jasmine: "npm:^0.0.6"
-  dependenciesMeta:
-    monaco-editor@0.34.1:
-      unplugged: true
-    web-test-runner-jasmine@0.0.6:
-      unplugged: true
-  languageName: unknown
-  linkType: soft
 
 "@puppeteer/browsers@npm:2.2.3":
   version: 2.2.3
