@@ -151,11 +151,25 @@ deps/$(SQLITE_VERSION)/sqlite3.h deps/$(SQLITE_VERSION)/sqlite3.c:
 	mkdir -p deps/$(SQLITE_VERSION)
 	(cd deps/$(SQLITE_VERSION); ../../cache/$(SQLITE_VERSION)/configure --enable-all && make sqlite3.c)
 
+
+ifeq ($(shell uname), Darwin)
+    OPENSSL_CHECK_CMD := openssl dgst -sha3-256 -r cache/$(EXTENSION_FUNCTIONS) | sed -e 's/ .*//' > deps/sha3
+else
+    OPENSSL_CHECK_CMD := openssl dgst -sha3-256 -r cache/$(EXTENSION_FUNCTIONS) | sed -e 's/\s.*//' > deps/sha3
+endif
+
+ifeq ($(shell uname), Darwin)
+	HASH_CHECK_CMD := echo $(EXTENSION_FUNCTIONS_SHA3) | cmp /dev/stdin deps/sha3
+else
+	HASH_CHECK_CMD := echo $(EXTENSION_FUNCTIONS_SHA3) | cmp deps/sha3
+endif
+
+
 deps/$(EXTENSION_FUNCTIONS): cache/$(EXTENSION_FUNCTIONS)
 	mkdir -p deps
-	# openssl dgst -sha256 -r cache/$(EXTENSION_FUNCTIONS) | sed -e 's/\s.*//' > deps/sha3
-	# echo $(EXTENSION_FUNCTIONS_SHA3) | cmp /dev/stdin  deps/sha3
-	# rm -rf deps/sha3 $@
+	bash -c "$(OPENSSL_CHECK_CMD)"
+	bash -c "$(HASH_CHECK_CMD)"
+	rm -rf deps/sha3 $@
 	cp 'cache/$(EXTENSION_FUNCTIONS)' $@
 
 ## tmp

@@ -37,7 +37,7 @@ The default build produces ES6 modules + WASM, [synchronous and asynchronous](ht
 
 Note as per above that this is known to compile under Debian.
 
-MacOS initially complained about OpenSSL config. Compiling on MacOS may be possible with additional config, but this is currently unknown.
+Make sure to have OpenSSL@3 installed on your system.
 
 Development has been done using VSCode's [development container](https://code.visualstudio.com/docs/devcontainers/containers) feature.
 
