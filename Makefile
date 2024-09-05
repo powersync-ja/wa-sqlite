@@ -1,5 +1,6 @@
 # dependencies
-SQLITE_VERSION = version-3.46.0
+# TODO this should be 3.46.0, but there are build errors
+SQLITE_VERSION = version-3.44.0
 SQLITE_TARBALL_URL = https://www.sqlite.org/src/tarball/sqlite.tar.gz?r=${SQLITE_VERSION}
 
 EXTENSION_FUNCTIONS = extension-functions.c
@@ -170,15 +171,22 @@ tmp/obj/dist/%.o: %.c
 	mkdir -p tmp/obj/dist
 	$(EMCC) $(CFLAGS_DIST) $(WASQLITE_DEFINES) $^ -c -o $@
 
+# Use Linker true command switch which differs per OS
+ifeq ($(shell uname), Darwin)
+    TRUE_CMD := /usr/bin/true
+else
+    TRUE_CMD := /bin/true
+endif
+
 $(RS_DEBUG_BC): FORCE
 	mkdir -p tmp/bc/dist
 	cd $(RS_LIB_DIR); \
-	RUSTFLAGS="--emit=llvm-bc -C linker=/bin/true" cargo build -p powersync_loadable --profile wasm --no-default-features --features "powersync_core/static powersync_core/omit_load_extension sqlite_nostd/static sqlite_nostd/omit_load_extension" -Z build-std=panic_abort,core,alloc --target $(RS_WASM_TGT)
+	RUSTFLAGS="--emit=llvm-bc -C linker=${TRUE_CMD}" cargo build -p powersync_loadable --profile wasm --no-default-features --features "powersync_core/static powersync_core/omit_load_extension sqlite_nostd/static sqlite_nostd/omit_load_extension" -Z build-std=panic_abort,core,alloc --target $(RS_WASM_TGT)
 
 $(RS_RELEASE_BC): FORCE
 	mkdir -p tmp/bc/dist
 	cd $(RS_LIB_DIR); \
-	RUSTFLAGS="--emit=llvm-bc -C linker=/bin/true" cargo build -p powersync_loadable --profile wasm --no-default-features --features "powersync_core/static powersync_core/omit_load_extension sqlite_nostd/static sqlite_nostd/omit_load_extension" -Z build-std=panic_abort,core,alloc --target $(RS_WASM_TGT)
+	RUSTFLAGS="--emit=llvm-bc -C linker=${TRUE_CMD}" cargo build -p powersync_loadable --profile wasm --no-default-features --features "powersync_core/static powersync_core/omit_load_extension sqlite_nostd/static sqlite_nostd/omit_load_extension" -Z build-std=panic_abort,core,alloc --target $(RS_WASM_TGT)
 
 
 ## debug
@@ -194,7 +202,7 @@ debug/wa-sqlite.mjs: $(OBJ_FILES_DEBUG) $(RS_DEBUG_BC) $(EXPORTED_FUNCTIONS) $(E
 	$(EMCC) $(EMFLAGS_DEBUG) \
 	  $(EMFLAGS_INTERFACES) \
 	  $(EMFLAGS_LIBRARIES) \
-		$(RS_WASM_TGT_DIR)/debug/deps/*.bc \
+	  $(RS_WASM_TGT_DIR)/debug/deps/*.bc \
 	  $(OBJ_FILES_DEBUG) *.o -o $@
 
 debug/wa-sqlite-async.mjs: $(OBJ_FILES_DEBUG) $(RS_DEBUG_BC) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS) $(ASYNCIFY_IMPORTS)
@@ -203,7 +211,7 @@ debug/wa-sqlite-async.mjs: $(OBJ_FILES_DEBUG) $(RS_DEBUG_BC) $(EXPORTED_FUNCTION
 	  $(EMFLAGS_INTERFACES) \
 	  $(EMFLAGS_LIBRARIES) \
 	  $(EMFLAGS_ASYNCIFY_DEBUG) \
-		$(RS_WASM_TGT_DIR)/debug/deps/*.bc \
+	  $(RS_WASM_TGT_DIR)/debug/deps/*.bc \
 	  $(OBJ_FILES_DEBUG) *.o -o $@
 
 ## Debug FTS builds
@@ -233,6 +241,7 @@ debug/wa-sqlite-jspi.mjs: $(OBJ_FILES_DEBUG) $(JSFILES) $(EXPORTED_FUNCTIONS) $(
 	  $(EMFLAGS_INTERFACES) \
 	  $(EMFLAGS_LIBRARIES) \
 	  $(EMFLAGS_JSPI) \
+	  $(RS_WASM_TGT_DIR)/wasm/deps/*.bc \
 	  $(OBJ_FILES_DEBUG) -o $@
 
 ## dist
@@ -248,7 +257,7 @@ dist/wa-sqlite.mjs: $(OBJ_FILES_DIST) $(RS_RELEASE_BC) $(EXPORTED_FUNCTIONS) $(E
 	$(EMCC) $(EMFLAGS_DIST) \
 	  $(EMFLAGS_INTERFACES) \
 	  $(EMFLAGS_LIBRARIES) \
-		$(RS_WASM_TGT_DIR)/wasm/deps/*.bc \
+	  $(RS_WASM_TGT_DIR)/wasm/deps/*.bc \
 	  $(OBJ_FILES_DIST)  -o $@
 
 dist/wa-sqlite-async.mjs: $(OBJ_FILES_DIST) $(RS_RELEASE_BC) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS) $(ASYNCIFY_IMPORTS)
@@ -257,6 +266,7 @@ dist/wa-sqlite-async.mjs: $(OBJ_FILES_DIST) $(RS_RELEASE_BC) $(EXPORTED_FUNCTION
 	  $(EMFLAGS_INTERFACES) \
 	  $(EMFLAGS_LIBRARIES) \
 	  $(EMFLAGS_ASYNCIFY_DIST) \
+	  $(RS_WASM_TGT_DIR)/wasm/deps/*.bc \
 	  $(OBJ_FILES_DIST) -o $@
 
 dist/wa-sqlite-jspi.mjs: $(OBJ_FILES_DIST) $(JSFILES) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS) $(ASYNCIFY_IMPORTS)
@@ -267,3 +277,5 @@ dist/wa-sqlite-jspi.mjs: $(OBJ_FILES_DIST) $(JSFILES) $(EXPORTED_FUNCTIONS) $(EX
 	  $(EMFLAGS_JSPI) \
 	  $(RS_WASM_TGT_DIR)/wasm/deps/*.bc \
 	  $(OBJ_FILES_DIST) -o $@
+
+FORCE:
