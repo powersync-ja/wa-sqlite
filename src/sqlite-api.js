@@ -848,6 +848,30 @@ export function Factory(Module) {
     return check('sqlite3_vfs_register', result);
   };
 
+  sqlite3.register_table_onchange_hook = function(db, callback) {
+    // Register hooks for this DB as a global hook
+    // It will call the global handler above
+    Module.ccall('register_table_update_hook', 'int', ['number'], [db]);
+
+    onTableChangeCallbacks[db] = function(opType, tableNamePtr, rowId) {
+      // Need to get the string from the pointer
+      // const tableName = Module.UTF8ToString(Module.getValue(tableNamePtr, '*'));
+      const memory = new DataView(Module.HEAPU8.buffer);
+
+      // Find the null terminator to determine the string length
+      let length = 0;
+      while (memory.getUint8(tableNamePtr + length) !== 0) {
+        length++;
+      }
+
+      // Extract the string content
+      const stringBytes = new Uint8Array(Module.HEAPU8.buffer, tableNamePtr, length);
+      const tableName = new TextDecoder().decode(stringBytes);
+
+      return callback(opType, tableName, rowId);
+    };
+  };
+
   function check(fname, result, db = null, allowed = [SQLite.SQLITE_OK]) {
     if (allowed.includes(result)) return result;
     const message = db ? Module.ccall('sqlite3_errmsg', 'string', ['number'], [db]) : fname;
