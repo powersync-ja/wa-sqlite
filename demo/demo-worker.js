@@ -96,6 +96,7 @@ maybeReset().then(async () => {
 
   // Open the database.
   const db = await sqlite3.open_v2(dbName);
+  sqlite3.load_extension(db, 'side_module.wasm', 'sqlite3_powersync_init');
 
   // Add example functions regex and regex_replace.
   sqlite3.create_function(

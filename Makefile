@@ -57,6 +57,7 @@ CFLAGS_DIST =  -Oz -flto $(CFLAGS_COMMON)
 EMFLAGS_COMMON = \
 	-s ALLOW_MEMORY_GROWTH=1 \
 	-s WASM=1 \
+	-s MAIN_MODULE \
 	-s INVOKE_RUN \
 	-s ENVIRONMENT="web,worker" \
 	-s STACK_SIZE=512KB \
@@ -111,7 +112,6 @@ WASQLITE_DEFINES = \
 	-DSQLITE_OMIT_AUTOINIT \
 	-DSQLITE_OMIT_DECLTYPE \
 	-DSQLITE_OMIT_DEPRECATED \
-	-DSQLITE_OMIT_LOAD_EXTENSION \
 	-DSQLITE_OMIT_SHARED_CACHE \
 	-DSQLITE_THREADSAFE=0 \
 	-DSQLITE_USE_ALLOCA \
@@ -216,8 +216,8 @@ debug/wa-sqlite.mjs: $(OBJ_FILES_DEBUG) $(RS_DEBUG_BC) $(EXPORTED_FUNCTIONS) $(E
 	$(EMCC) $(EMFLAGS_DEBUG) \
 	  $(EMFLAGS_INTERFACES) \
 	  $(EMFLAGS_LIBRARIES) \
-	  $(RS_WASM_TGT_DIR)/debug/deps/*.bc \
-	  $(OBJ_FILES_DEBUG) *.o -o $@
+	#   $(RS_WASM_TGT_DIR)/wasm/deps/*.bc \
+	  $(OBJ_FILES_DEBUG) -o $@
 
 debug/wa-sqlite-async.mjs: $(OBJ_FILES_DEBUG) $(RS_DEBUG_BC) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS) $(ASYNCIFY_IMPORTS)
 	mkdir -p debug
@@ -225,8 +225,8 @@ debug/wa-sqlite-async.mjs: $(OBJ_FILES_DEBUG) $(RS_DEBUG_BC) $(EXPORTED_FUNCTION
 	  $(EMFLAGS_INTERFACES) \
 	  $(EMFLAGS_LIBRARIES) \
 	  $(EMFLAGS_ASYNCIFY_DEBUG) \
-	  $(RS_WASM_TGT_DIR)/debug/deps/*.bc \
-	  $(OBJ_FILES_DEBUG) *.o -o $@
+	#   $(RS_WASM_TGT_DIR)/wasm/deps/*.bc \
+	  $(OBJ_FILES_DEBUG) -o $@
 
 ## Debug FTS builds
 # .PHONY: debug
@@ -255,7 +255,7 @@ debug/wa-sqlite-jspi.mjs: $(OBJ_FILES_DEBUG) $(JSFILES) $(EXPORTED_FUNCTIONS) $(
 	  $(EMFLAGS_INTERFACES) \
 	  $(EMFLAGS_LIBRARIES) \
 	  $(EMFLAGS_JSPI) \
-	  $(RS_WASM_TGT_DIR)/wasm/deps/*.bc \
+	#   $(RS_WASM_TGT_DIR)/wasm/deps/*.bc \
 	  $(OBJ_FILES_DEBUG) -o $@
 
 ## dist
@@ -271,7 +271,6 @@ dist/wa-sqlite.mjs: $(OBJ_FILES_DIST) $(RS_RELEASE_BC) $(EXPORTED_FUNCTIONS) $(E
 	$(EMCC) $(EMFLAGS_DIST) \
 	  $(EMFLAGS_INTERFACES) \
 	  $(EMFLAGS_LIBRARIES) \
-	  $(RS_WASM_TGT_DIR)/wasm/deps/*.bc \
 	  $(OBJ_FILES_DIST)  -o $@
 
 dist/wa-sqlite-async.mjs: $(OBJ_FILES_DIST) $(RS_RELEASE_BC) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS) $(ASYNCIFY_IMPORTS)
@@ -280,7 +279,6 @@ dist/wa-sqlite-async.mjs: $(OBJ_FILES_DIST) $(RS_RELEASE_BC) $(EXPORTED_FUNCTION
 	  $(EMFLAGS_INTERFACES) \
 	  $(EMFLAGS_LIBRARIES) \
 	  $(EMFLAGS_ASYNCIFY_DIST) \
-	  $(RS_WASM_TGT_DIR)/wasm/deps/*.bc \
 	  $(OBJ_FILES_DIST) -o $@
 
 dist/wa-sqlite-jspi.mjs: $(OBJ_FILES_DIST) $(JSFILES) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS) $(ASYNCIFY_IMPORTS)
@@ -289,7 +287,6 @@ dist/wa-sqlite-jspi.mjs: $(OBJ_FILES_DIST) $(JSFILES) $(EXPORTED_FUNCTIONS) $(EX
 	  $(EMFLAGS_INTERFACES) \
 	  $(EMFLAGS_LIBRARIES) \
 	  $(EMFLAGS_JSPI) \
-	  $(RS_WASM_TGT_DIR)/wasm/deps/*.bc \
 	  $(OBJ_FILES_DIST) -o $@
 
 FORCE:

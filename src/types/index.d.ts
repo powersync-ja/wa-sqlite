@@ -240,6 +240,8 @@ declare interface SQLiteAPI {
    */
   bind(stmt: number, i: number, value: SQLiteCompatibleType | null): number;
 
+  load_extension(db: number, filename: string, entry: string): number;
+
   /**
    * Bind blob to prepared statement parameter
    *

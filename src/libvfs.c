@@ -9,9 +9,6 @@
 
 // This is undefined in the WASM linker step if not specified
 extern int __rust_no_alloc_shim_is_unstable = 0;
-extern int sqlite3_powersync_init(sqlite3 *db, char **pzErrMsg,
-                                  const sqlite3_api_routines *pApi);
-
 // This list of methods must match exactly with libvfs.js.
 enum {
   xOpen,
@@ -230,5 +227,6 @@ int EMSCRIPTEN_KEEPALIVE libvfs_vfs_register(
 
 int setup_powersync()
 {
-  return sqlite3_auto_extension((void (*)(void)) & sqlite3_powersync_init);
+  return 0;
+  // return sqlite3_auto_extension((void (*)(void)) & sqlite3_powersync_init);
 }

@@ -524,11 +524,44 @@ export function Factory(Module) {
         const db = Module.getValue(tmpPtr[0], '*');
         databases.add(db);
 
-        Module.ccall('RegisterExtensionFunctions', 'void', ['number'], [db]);
+        // TODO this fails to execute when side modules are enabled.
+
+        // Module.ccall('RegisterExtensionFunctions', 'void', ['number'], [db]);
         check(fname, rc);
         return db;
       } finally {
         Module._sqlite3_free(zVfs);
+      }
+    };
+  })();
+
+  sqlite3.load_extension = (function () {
+    const fname = 'sqlite3_load_extension';
+    const f = Module.cwrap(fname, ...decl('nssn:n'));
+    return function (db, filename, entry) {
+      try {
+        var errorPointer = Module._malloc(4);
+
+        const enabled = Module.ccall('sqlite3_enable_load_extension', 'number', ['number', 'number'], [db, 1]);
+        console.log('enabled', enabled);
+        const r = f(db, filename, entry, errorPointer);
+        if (r !== 0) {
+          // Get the error message pointer from the errorPointer
+          var errorMessagePointer = Module.getValue(errorPointer, 'i8*');
+
+          // If the errorMessagePointer is not null, convert it to a JS string
+          if (errorMessagePointer !== 0) {
+            var errorMessage = Module.UTF8ToString(errorMessagePointer);
+            console.error('Error loading extension:', errorMessage);
+
+            // Optionally: Free the error message in SQLite (depending on how it is allocated)
+            // sqlite3_free(errorMessagePointer);
+          } else {
+            console.error('Unknown error occurred while loading extension.');
+          }
+          return r;
+        }
+      } finally {
       }
     };
   })();
