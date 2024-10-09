@@ -2,6 +2,7 @@
   "_RegisterExtensionFunctions",
   "_main",
   "_malloc",
+  "_memcpy",
   "_free",
   "_sqlite3_aggregate_context",
   "_sqlite3_auto_extension",
