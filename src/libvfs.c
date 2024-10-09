@@ -7,8 +7,6 @@
 
 #include "libadapters.h"
 
-// This is undefined in the WASM linker step if not specified
-extern int __rust_no_alloc_shim_is_unstable = 0;
 // This list of methods must match exactly with libvfs.js.
 enum {
   xOpen,
