@@ -537,14 +537,16 @@ export function Factory(Module) {
 
   sqlite3.load_extension = (function () {
     const fname = 'sqlite3_load_extension';
-    const f = Module.cwrap(fname, ...decl('nssn:n'));
+    const load_extension = Module.cwrap(fname, ...decl('nssn:n'), { async });
+    const enable_extension = Module.cwrap('sqlite3_enable_load_extension', 'number', ['number', 'number'], { async });
+
     return function (db, filename, entry) {
       try {
         var errorPointer = Module._malloc(4);
 
-        const enabled = Module.ccall('sqlite3_enable_load_extension', 'number', ['number', 'number'], [db, 1]);
+        const enabled =  enable_extension(db, 1);
         console.log('enabled', enabled);
-        const r = f(db, filename, entry, errorPointer);
+        const r =  load_extension(db, filename, entry, errorPointer);
         if (r !== 0) {
           // Get the error message pointer from the errorPointer
           var errorMessagePointer = Module.getValue(errorPointer, 'i8*');
