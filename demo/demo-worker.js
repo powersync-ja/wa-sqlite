@@ -83,8 +83,28 @@ maybeReset().then(async () => {
 
   // Instantiate SQLite.
   const { default: moduleFactory } = await import(BUILDS.get(buildName));
-  const module = await moduleFactory();
+  const module = await moduleFactory({
+    locateFile(path) {
+      // (OPTIONAL) locateFile can be specified to change WASM module resolution.
+      // The returned url is passed to fetch, and can be a relative path
+      // or absolute URL.
+      return `../dist/${path}`;
+    },
+  });
+
   const sqlite3 = SQLite.Factory(module);
+
+  // Load the extension library into this scope
+  let extScope = {};
+  await module.loadDynamicLibrary(
+    "side_module.wasm",
+    { loadAsync: true },
+    extScope
+  );
+
+  // This calls sqlite3_auto_extension(sqlite3_powersync_init).
+  // For generic extensions, we'd need to call sqlite3_auto_extension directly.
+  extScope.powersync_init_static();
 
   if (config.vfsModule) {
     // Create the VFS and register it as the default file system.
@@ -96,7 +116,6 @@ maybeReset().then(async () => {
 
   // Open the database.
   const db = await sqlite3.open_v2(dbName);
-  sqlite3.load_extension(db, 'side_module.wasm', 'sqlite3_powersync_init');
 
   // Add example functions regex and regex_replace.
   sqlite3.create_function(
