@@ -15,5 +15,6 @@
   "UTF32ToString",
   "intArrayFromString",
   "intArrayToString",
-  "writeArrayToMemory"
+  "writeArrayToMemory",
+  "loadDynamicLibrary"
 ]
