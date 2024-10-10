@@ -44,7 +44,7 @@ CFLAGS_COMMON = \
 	-I'deps/$(SQLITE_VERSION)' \
 	-Wno-non-literal-null-conversion \
 	$(CFLAGS_EXTRA)
-CFLAGS_DEBUG = -g $(CFLAGS_COMMON)
+CFLAGS_DEBUG = -g -fPIC $(CFLAGS_COMMON)
 CFLAGS_DIST =  -Oz -flto $(CFLAGS_COMMON)
 
 EMFLAGS_COMMON = \

@@ -11,6 +11,12 @@ const BUILDS = new Map([
   // ['jspi', '../debug/wa-sqlite-jspi.mjs'],
 ]);
 
+const EXT_WASM = new Map([
+  ['default', 'side_module.wasm'],
+  ['asyncify', 'side_module_async.wasm'],
+  ['jspi', 'side_module_jspi.wasm'],
+]);
+
 /**
  * @typedef Config
  * @property {string} name
@@ -77,6 +83,7 @@ maybeReset().then(async () => {
   const buildName = searchParams.get('build') || BUILDS.keys().next().value;
   const configName = searchParams.get('config') || VFS_CONFIGS.keys().next().value;
   const config = VFS_CONFIGS.get(configName);
+  const extWasm = EXT_WASM.get(buildName);
 
   const dbName = searchParams.get('dbName') ?? 'hello';
   const vfsName = searchParams.get('vfsName') ?? config.vfsName ?? 'demo';
@@ -84,12 +91,13 @@ maybeReset().then(async () => {
   // Instantiate SQLite.
   const { default: moduleFactory } = await import(BUILDS.get(buildName));
   const module = await moduleFactory({
-    locateFile(path) {
-      // (OPTIONAL) locateFile can be specified to change WASM module resolution.
-      // The returned url is passed to fetch, and can be a relative path
-      // or absolute URL.
-      return `../dist/${path}`;
-    },
+    // locateFile(path) {
+    //   // (OPTIONAL) locateFile can be specified to change WASM module resolution.
+    //   // The returned url is passed to fetch, and can be a relative path
+    //   // or absolute URL.
+    //   // This applies to both the main wasm file, and the extension.
+    //   return `../dist/${path}`;
+    // },
   });
 
   const sqlite3 = SQLite.Factory(module);
@@ -97,7 +105,7 @@ maybeReset().then(async () => {
   // Load the extension library into this scope
   let extScope = {};
   await module.loadDynamicLibrary(
-    "side_module.wasm",
+    extWasm,
     { loadAsync: true },
     extScope
   );
