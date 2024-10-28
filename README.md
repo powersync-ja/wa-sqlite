@@ -46,19 +46,15 @@ git clone [this repo]
 ```
 
 ```bash
-git submodule init
-```
-
-```bash
-git submodule update --init --recursive
-```
-
-```bash
-yarn install
-```
-
-```bash
 make -B
+```
+
+### PowerSync Core
+
+To update the PowerSync SQLite core see the [script](./scripts/powersync-core.js). Edit the `CORE_VERSION` and run the script with
+
+```bash
+node scripts/powersync-core.js
 ```
 
 ## API

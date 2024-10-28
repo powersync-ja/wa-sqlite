@@ -12,9 +12,9 @@ const BUILDS = new Map([
 ]);
 
 const EXT_WASM = new Map([
-  ['default', 'side_module.wasm'],
-  ['asyncify', 'side_module_async.wasm'],
-  ['jspi', 'side_module_jspi.wasm'],
+  ['default', 'libpowersync.wasm'],
+  ['asyncify', 'libpowersync-async.wasm'],
+  ['jspi', 'libpowersync-jspi.wasm'],
 ]);
 
 /**
