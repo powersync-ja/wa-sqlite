@@ -20,7 +20,8 @@
     "src/WebLocksMixin.js",
     "src/examples/*",
     "dist/*",
-    "test/*"
+    "test/*",
+    "scripts/download-powersync-core.js"
   ],
   "scripts": {
     "build-docs": "typedoc",
