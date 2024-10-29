@@ -25,7 +25,7 @@
   ],
   "scripts": {
     "build-docs": "typedoc",
-    "postinstall": "yarn powersync-core:download",
+    "postinstall": "npm run powersync-core:download",
     "powersync-core:download": "node scripts/download-powersync-core.js",
     "release": "yarn changeset publish",
     "start": "web-dev-server --node-resolve",
