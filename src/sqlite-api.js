@@ -27,7 +27,7 @@ const async = true;
 
 const onTableChangeCallbacks = {};
 globalThis.__onTablesChanged = function(db, opType, tableName, rowId) {
-  setTimeout(() => onTableChangeCallbacks[db]?.(opType, tableName, rowId), 0);
+  onTableChangeCallbacks[db]?.(opType, tableName, rowId);
 };
 
 /**
@@ -569,7 +569,12 @@ export function Factory(Module) {
       const stringBytes = new Uint8Array(Module.HEAPU8.buffer, tableNamePtr, length);
       const tableName = new TextDecoder().decode(stringBytes);
 
-      return callback(opType, tableName, rowId);
+      /**
+       * Call the callback inside a setTimeout to avoid blocking SQLite.
+       * We use a setTimeout only after fetching data from the heap to avoid
+       * accessing memory which has been freed. 
+       */
+      setTimeout(() => callback(opType, tableName, rowId), 0)
     };
   };
 
