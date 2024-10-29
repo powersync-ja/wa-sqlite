@@ -1,6 +1,5 @@
 # dependencies
-# TODO this should be 3.46.0, but there are build errors
-SQLITE_VERSION = version-3.44.0
+SQLITE_VERSION = version-3.46.0
 SQLITE_TARBALL_URL = https://www.sqlite.org/src/tarball/sqlite.tar.gz?r=${SQLITE_VERSION}
 
 EXTENSION_FUNCTIONS = extension-functions.c
@@ -158,13 +157,23 @@ else
 endif
 
 
+# This hacks away a:
+# ```C
+#  #define COMPILE_SQLITE_EXTENSIONS_AS_LOADABLE_MODULE=1
+# ```
+# statement in `extension-functions.c`. 
+# The default setting causes ``extension-functions.c` to import SQLite3 with
+# ```C
+#  #include "sqlite3ext.h"
+# ```
+# This results in undefined symbols during runtime when compiling the WASM with MAIN_MODULE=2.
 deps/$(EXTENSION_FUNCTIONS): cache/$(EXTENSION_FUNCTIONS)
 	mkdir -p deps
 	bash -c "$(OPENSSL_CHECK_CMD)"
 	bash -c "$(HASH_CHECK_CMD)"
 	rm -rf deps/sha3 $@
-	cp 'cache/$(EXTENSION_FUNCTIONS)' $@
-
+	sed -i '' "/#define COMPILE_SQLITE_EXTENSIONS_AS_LOADABLE_MODULE/d" cache/$(EXTENSION_FUNCTIONS)
+	cp cache/$(EXTENSION_FUNCTIONS) $@
 ## tmp
 .PHONY: clean-tmp
 clean-tmp:
@@ -178,12 +187,6 @@ tmp/obj/dist/%.o: %.c
 	mkdir -p tmp/obj/dist
 	$(EMCC) $(CFLAGS_DIST) $(WASQLITE_DEFINES) $^ -c -o $@
 
-# Use Linker true command switch which differs per OS
-ifeq ($(shell uname), Darwin)
-    TRUE_CMD := /usr/bin/true
-else
-    TRUE_CMD := /bin/true
-endif
 
 ## debug
 .PHONY: clean-debug

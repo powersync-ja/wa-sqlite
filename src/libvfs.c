@@ -222,9 +222,3 @@ int EMSCRIPTEN_KEEPALIVE libvfs_vfs_register(
   *ppVfs = vfs;
   return sqlite3_vfs_register(&vfs->base, makeDefault);
 }
-
-int setup_powersync()
-{
-  return 0;
-  // return sqlite3_auto_extension((void (*)(void)) & sqlite3_powersync_init);
-}

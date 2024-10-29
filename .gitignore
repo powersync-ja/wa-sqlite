@@ -9,6 +9,9 @@
 !.yarn/versions
 .pnp.*
 
+# PowerSync Rust Core
+libpowersync*.wasm
+
 /cache
 /debug
 /deps

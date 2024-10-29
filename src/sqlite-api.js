@@ -516,7 +516,6 @@ export function Factory(Module) {
     return async function(zFilename, flags, zVfs) {
       flags = flags || SQLite.SQLITE_OPEN_CREATE | SQLite.SQLITE_OPEN_READWRITE;
       zVfs = createUTF8(zVfs);
-      Module.ccall('setup_powersync', 'int', []);
       try {
         // Allow retry operations.
         const rc = await retry(() => f(zFilename, tmpPtr[0], flags, zVfs));
@@ -524,9 +523,7 @@ export function Factory(Module) {
         const db = Module.getValue(tmpPtr[0], '*');
         databases.add(db);
 
-        // TODO this fails to execute when side modules are enabled.
-
-        // Module.ccall('RegisterExtensionFunctions', 'void', ['number'], [db]);
+        Module.ccall('RegisterExtensionFunctions', 'number', ['number'], [db]);
         check(fname, rc);
         return db;
       } finally {
@@ -535,38 +532,6 @@ export function Factory(Module) {
     };
   })();
 
-  sqlite3.load_extension = (function () {
-    const fname = 'sqlite3_load_extension';
-    const load_extension = Module.cwrap(fname, ...decl('nssn:n'), { async });
-    const enable_extension = Module.cwrap('sqlite3_enable_load_extension', 'number', ['number', 'number'], { async });
-
-    return function (db, filename, entry) {
-      try {
-        var errorPointer = Module._malloc(4);
-
-        const enabled =  enable_extension(db, 1);
-        console.log('enabled', enabled);
-        const r =  load_extension(db, filename, entry, errorPointer);
-        if (r !== 0) {
-          // Get the error message pointer from the errorPointer
-          var errorMessagePointer = Module.getValue(errorPointer, 'i8*');
-
-          // If the errorMessagePointer is not null, convert it to a JS string
-          if (errorMessagePointer !== 0) {
-            var errorMessage = Module.UTF8ToString(errorMessagePointer);
-            console.error('Error loading extension:', errorMessage);
-
-            // Optionally: Free the error message in SQLite (depending on how it is allocated)
-            // sqlite3_free(errorMessagePointer);
-          } else {
-            console.error('Unknown error occurred while loading extension.');
-          }
-          return r;
-        }
-      } finally {
-      }
-    };
-  })();
 
   sqlite3.progress_handler = function(db, nProgressOps, handler, userData) {
     verifyDatabase(db);
