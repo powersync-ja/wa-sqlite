@@ -6,6 +6,8 @@ EXTENSION_FUNCTIONS = extension-functions.c
 EXTENSION_FUNCTIONS_URL = https://www.sqlite.org/contrib/download/extension-functions.c?get=25
 EXTENSION_FUNCTIONS_SHA3 = ee39ddf5eaa21e1d0ebcbceeab42822dd0c4f82d8039ce173fd4814807faabfa
 
+
+
 # source files
 CFILES = \
 	sqlite3.c \
@@ -49,7 +51,6 @@ CFLAGS_DIST =  -Oz -flto $(CFLAGS_COMMON)
 EMFLAGS_COMMON = \
 	-s ALLOW_MEMORY_GROWTH=1 \
 	-s WASM=1 \
-	-s MAIN_MODULE=2 \
 	-s INVOKE_RUN \
 	-s ENVIRONMENT="web,worker" \
 	-s STACK_SIZE=512KB \
@@ -64,6 +65,18 @@ EMFLAGS_DIST = \
 	-Oz \
 	-flto \
 	$(EMFLAGS_COMMON)
+
+# Need to export all the Main module's symbols
+# Setting MAIN_MODULE=2 can cause a runtime error if the 
+# main module does not export a particular function.
+# With this being a runtime error, it's tricky to determine all
+# the methods that a submodule might require - also for this to have value
+# other submodules would need to be compatible, but we cannot gaurentee their
+# required exports are present. 
+# This setting increases the main WASM side considerably.
+# Rougly increases from 1.5mb to 3.7mb.
+EMFLAGS_DYNAMIC = \
+	-s MAIN_MODULE=1 
 
 EMFLAGS_INTERFACES = \
 	-s EXPORTED_FUNCTIONS=@$(EXPORTED_FUNCTIONS) \
@@ -194,8 +207,9 @@ clean-debug:
 	rm -rf debug
 
 .PHONY: debug
-debug: debug/wa-sqlite.mjs debug/wa-sqlite-async.mjs debug/wa-sqlite-jspi.mjs
+debug: debug/wa-sqlite.mjs debug/wa-sqlite-async.mjs debug/wa-sqlite-jspi.mjs debug/wa-sqlite-main.mjs debug/wa-sqlite-main-async.mjs
 
+# TODO link static
 debug/wa-sqlite.mjs: $(OBJ_FILES_DEBUG) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS)
 	mkdir -p debug
 	$(EMCC) $(EMFLAGS_DEBUG) \
@@ -203,9 +217,27 @@ debug/wa-sqlite.mjs: $(OBJ_FILES_DEBUG) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME
 	  $(EMFLAGS_LIBRARIES) \
 	  $(OBJ_FILES_DEBUG) -o $@
 
+# TODO link static
 debug/wa-sqlite-async.mjs: $(OBJ_FILES_DEBUG)  $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS) $(ASYNCIFY_IMPORTS)
 	mkdir -p debug
 	$(EMCC) $(EMFLAGS_DEBUG) \
+	  $(EMFLAGS_INTERFACES) \
+	  $(EMFLAGS_LIBRARIES) \
+	  $(EMFLAGS_ASYNCIFY_DEBUG) \
+	  $(OBJ_FILES_DEBUG) -o $@
+
+# Main module distributable
+debug/wa-sqlite-main.mjs: $(OBJ_FILES_DEBUG) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS)
+	mkdir -p debug
+	$(EMCC) $(EMFLAGS_DEBUG) $(EMFLAGS_DYNAMIC) \
+	  $(EMFLAGS_INTERFACES) \
+	  $(EMFLAGS_LIBRARIES) \
+	  $(OBJ_FILES_DEBUG) -o $@
+
+# Main module distributable
+debug/wa-sqlite-main-async.mjs: $(OBJ_FILES_DEBUG)  $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS) $(ASYNCIFY_IMPORTS)
+	mkdir -p debug
+	$(EMCC) $(EMFLAGS_DEBUG) $(EMFLAGS_DYNAMIC) \
 	  $(EMFLAGS_INTERFACES) \
 	  $(EMFLAGS_LIBRARIES) \
 	  $(EMFLAGS_ASYNCIFY_DEBUG) \
@@ -232,9 +264,10 @@ debug/wa-sqlite-async.mjs: $(OBJ_FILES_DEBUG)  $(EXPORTED_FUNCTIONS) $(EXPORTED_
 # 		$(RS_WASM_TGT_DIR)/debug/deps/*.bc \
 # 	  $(OBJ_FILES_DEBUG_FTS) *.o -o $@
 
+# TODO link static
 debug/wa-sqlite-jspi.mjs: $(OBJ_FILES_DEBUG) $(JSFILES) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS) $(ASYNCIFY_IMPORTS)
 	mkdir -p debug
-	$(EMCC) $(EMFLAGS_DEBUG) \
+	$(EMCC) $(EMFLAGS_DEBUG) $(EMFLAGS_DYNAMIC)  \
 	  $(EMFLAGS_INTERFACES) \
 	  $(EMFLAGS_LIBRARIES) \
 	  $(EMFLAGS_JSPI) \
@@ -246,8 +279,9 @@ clean-dist:
 	rm -rf dist
 
 .PHONY: dist
-dist: dist/wa-sqlite.mjs dist/wa-sqlite-async.mjs dist/wa-sqlite-jspi.mjs
+dist: dist/wa-sqlite.mjs dist/wa-sqlite-async.mjs dist/wa-sqlite-jspi.mjs dist/wa-sqlite-main.mjs dist/wa-sqlite-async-main.mjs
 
+# TODO link static
 dist/wa-sqlite.mjs: $(OBJ_FILES_DIST) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS)
 	mkdir -p dist
 	$(EMCC) $(EMFLAGS_DIST) \
@@ -255,6 +289,7 @@ dist/wa-sqlite.mjs: $(OBJ_FILES_DIST) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_M
 	  $(EMFLAGS_LIBRARIES) \
 	  $(OBJ_FILES_DIST)  -o $@
 
+# TODO link static
 dist/wa-sqlite-async.mjs: $(OBJ_FILES_DIST) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS) $(ASYNCIFY_IMPORTS)
 	mkdir -p dist
 	$(EMCC) $(EMFLAGS_DIST) \
@@ -263,6 +298,22 @@ dist/wa-sqlite-async.mjs: $(OBJ_FILES_DIST) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUN
 	  $(EMFLAGS_ASYNCIFY_DIST) \
 	  $(OBJ_FILES_DIST) -o $@
 
+dist/wa-sqlite-main.mjs: $(OBJ_FILES_DIST) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS)
+	mkdir -p dist
+	$(EMCC) $(EMFLAGS_DIST) $(EMFLAGS_DYNAMIC) \
+	  $(EMFLAGS_INTERFACES) \
+	  $(EMFLAGS_LIBRARIES) \
+	  $(OBJ_FILES_DIST)  -o $@
+
+dist/wa-sqlite-async-main.mjs: $(OBJ_FILES_DIST) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS) $(ASYNCIFY_IMPORTS)
+	mkdir -p dist
+	$(EMCC) $(EMFLAGS_DIST) $(EMFLAGS_DYNAMIC) \
+	  $(EMFLAGS_INTERFACES) \
+	  $(EMFLAGS_LIBRARIES) \
+	  $(EMFLAGS_ASYNCIFY_DIST) \
+	  $(OBJ_FILES_DIST) -o $@
+
+# TODO link static
 dist/wa-sqlite-jspi.mjs: $(OBJ_FILES_DIST) $(JSFILES) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS) $(ASYNCIFY_IMPORTS)
 	mkdir -p dist
 	$(EMCC) $(EMFLAGS_DIST) \

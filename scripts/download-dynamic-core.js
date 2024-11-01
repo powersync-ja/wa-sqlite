@@ -16,7 +16,7 @@ const RELEASE_FILES = [`libpowersync.wasm`, `libpowersync-async.wasm`];
 
 const DIST_DIR = path.resolve(__dirname, '../dist');
 
-async function downloadCore() {
+async function downloadDynamicCore() {
   for (const file of RELEASE_FILES) {
     console.log(`Downloading ${file}`);
 
@@ -33,4 +33,4 @@ async function downloadCore() {
   }
 }
 
-downloadCore();
+downloadDynamicCore();

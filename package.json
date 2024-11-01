@@ -26,7 +26,7 @@
   "scripts": {
     "build-docs": "typedoc",
     "postinstall": "npm run powersync-core:download",
-    "powersync-core:download": "node scripts/download-powersync-core.js",
+    "powersync-core:download": "node scripts/download-dynamic-core.js",
     "release": "yarn changeset publish",
     "start": "web-dev-server --node-resolve",
     "test": "web-test-runner",
