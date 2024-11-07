@@ -64,6 +64,11 @@ jobs:
           actions-cache-folder: ${{env.EM_CACHE_FOLDER}}
       - run: emcc -v
 
+      # For some reason the Makefile fails to execute this with a "Permission denied"
+      # error on Github actions. Doing this here prevents the error.
+      - name: Download PowerSync Core
+        run: node scripts/download-core-build.js
+
       - name: Test WASM build
         run: |
           make clean && make
