@@ -194,6 +194,7 @@ else
 endif
 
 
+
 # This hacks away a:
 # ```C
 #  #define COMPILE_SQLITE_EXTENSIONS_AS_LOADABLE_MODULE=1
@@ -203,13 +204,18 @@ endif
 # ```C
 #  #include "sqlite3ext.h"
 # ```
-# This results in undefined symbols during runtime when compiling the WASM with MAIN_MODULE=2.
+# This results in undefined symbols during runtime when `-DSQLITE_OMIT_LOAD_EXTENSION` is not used.
+ifeq ($(shell uname), Darwin)
+    SED_INPLACE := sed -i ''
+else
+    SED_INPLACE := sed -i
+endif
 deps/$(EXTENSION_FUNCTIONS): cache/$(EXTENSION_FUNCTIONS)
 	mkdir -p deps
 	bash -c "$(OPENSSL_CHECK_CMD)"
 	bash -c "$(HASH_CHECK_CMD)"
 	rm -rf deps/sha3 $@
-	sed -i '' "/#define COMPILE_SQLITE_EXTENSIONS_AS_LOADABLE_MODULE/d" cache/$(EXTENSION_FUNCTIONS)
+	$(SED_INPLACE) "/#define COMPILE_SQLITE_EXTENSIONS_AS_LOADABLE_MODULE/d" cache/$(EXTENSION_FUNCTIONS)
 	cp cache/$(EXTENSION_FUNCTIONS) $@
 
 ## tmp
