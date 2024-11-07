@@ -15,6 +15,7 @@ const BUILD_FILES = [`libpowersync-wasm.a`];
 const LIBS_DIR = path.resolve(__dirname, '../powersync-libs');
 
 async function directoryExists(path) {
+  console.log(`Checking directory ${path}`);
   try {
     const stats = await fs.stat(path);
     return stats.isDirectory();
@@ -29,8 +30,11 @@ async function directoryExists(path) {
 }
 
 async function downloadDynamicCore() {
+  console.log('Downloading PowerSync Core');
+
   const exists = await directoryExists(LIBS_DIR);
   if (!exists) {
+    console.log(`Creating libs directory ${LIBS_DIR}`);
     await fs.mkdir(LIBS_DIR);
   }
 
