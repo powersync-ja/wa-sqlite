@@ -5,13 +5,13 @@ name: wa-sqlite CI
 
 on:
   push:
-    branches: ['master']
+    branches: ["master"]
   pull_request:
-    branches: ['master']
+    branches: ["master"]
 
 env:
   EM_VERSION: 3.1.64
-  EM_CACHE_FOLDER: 'emsdk-cache'
+  EM_CACHE_FOLDER: "emsdk-cache"
 
 jobs:
   build:
@@ -23,20 +23,18 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: 'recursive'
       - name: Use Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-          cache: 'npm'
+          cache: "npm"
 
       - uses: browser-actions/setup-chrome@v1
         id: setup-chrome
         with:
           chrome-version: 129
       - run: |
-          ${{ steps.setup-chrome.outputs.chrome-path }} --version
+            ${{ steps.setup-chrome.outputs.chrome-path }} --version
 
         # Install yarn dependencies.
       - name: Get yarn cache directory path
@@ -50,6 +48,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-yarn-
       - run: yarn install
+
       - name: Test with checked-in WASM files
         run: yarn test
 
@@ -66,6 +65,9 @@ jobs:
           actions-cache-folder: ${{env.EM_CACHE_FOLDER}}
       - run: emcc -v
 
+      - name: Make script executable
+        run: chmod +x ./scripts/download-core-build.js
+      
       - name: Test WASM build
         run: |
           make clean && make
