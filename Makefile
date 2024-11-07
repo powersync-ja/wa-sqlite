@@ -1,5 +1,5 @@
 # dependencies
-SQLITE_VERSION = version-3.46.0
+SQLITE_VERSION = version-3.47.0
 SQLITE_TARBALL_URL = https://www.sqlite.org/src/tarball/sqlite.tar.gz?r=${SQLITE_VERSION}
 
 EXTENSION_FUNCTIONS = extension-functions.c
@@ -13,6 +13,7 @@ CFILES = \
 	main.c \
 	libauthorizer.c \
 	libfunction.c \
+	libhook.c \
 	libprogress.c \
 	libvfs.c \
 	$(CFILES_EXTRA)
@@ -23,6 +24,7 @@ POWERSYNC_CFILES = \
 JSFILES = \
 	src/libauthorizer.js \
 	src/libfunction.js \
+	src/libhook.js \
 	src/libprogress.js \
 	src/libvfs.js
 
@@ -39,7 +41,7 @@ COMBINED_EXPORTED_FUNCTIONS = tmp/combined_exports.json
 
 EXPORTED_RUNTIME_METHODS = src/extra_exported_runtime_methods.json
 ASYNCIFY_IMPORTS = src/asyncify_imports.json
-ASYNCIFY_EXPORTS = src/asyncify_exports.json
+JSPI_EXPORTS = src/jspi_exports.json
 
 # intermediate files
 OBJ_FILES_DEBUG = $(patsubst %.c,tmp/obj/debug/%.o,$(CFILES))
@@ -102,6 +104,7 @@ EMFLAGS_LIBRARIES = \
 	--js-library src/libtableupdates.js \
 	--post-js src/libauthorizer.js \
 	--post-js src/libfunction.js \
+	--post-js src/libhook.js \
 	--post-js src/libprogress.js \
 	--post-js src/libvfs.js
 
@@ -118,9 +121,9 @@ EMFLAGS_ASYNCIFY_DIST = \
 	-s ASYNCIFY_STACK_SIZE=16384
 
 EMFLAGS_JSPI = \
-	-s ASYNCIFY=2 \
+	-s JSPI \
 	-s ASYNCIFY_IMPORTS=@src/asyncify_imports.json \
-	-s ASYNCIFY_EXPORTS=@src/asyncify_exports.json
+	-s JSPI_EXPORTS=@src/jspi_exports.json
 
 # https://www.sqlite.org/compile.html
 WASQLITE_DEFINES = \

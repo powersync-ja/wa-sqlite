@@ -1,6 +1,6 @@
 // Method names for these signatures must be in src/asyncify_imports.json.
 const SIGNATURES = [
-  'ipp', // xProgress
+  'ipp', // xProgress, xCommitHook
   'ippp', // xClose, xSectorSize, xDeviceCharacteristics
   'vppp', // xShmBarrier, xFinal
   'ipppj', // xTruncate
@@ -15,6 +15,7 @@ const SIGNATURES = [
   'ippipppp', // xAuthorize
   'ipppppip', // xOpen
   'ipppiiip', // xShmMap
+  'vppippii', // xUpdateHook
 ];
 
 // This object will define the methods callable from WebAssembly.

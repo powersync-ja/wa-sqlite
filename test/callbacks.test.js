@@ -338,7 +338,19 @@ for (const [key, factory] of FACTORIES) {
       rc = await sqlite3.exec(db, 'CREATE TABLE t(x)');
       expect(rc).toEqual(SQLite.SQLITE_OK);
 
-      expect(authorizations.length).toBeGreaterThan(0);
+      let authCreateTable = false;
+      for (const authorization of authorizations) {
+        switch (authorization[0]) {
+          case SQLite.SQLITE_CREATE_TABLE:
+            authCreateTable = true;
+            expect(authorization[1]).toEqual('t');
+            expect(authorization[2]).toEqual('');
+            expect(authorization[3]).toEqual('main');
+            expect(authorization[4]).toEqual('');
+            break;
+        }
+      }
+      expect(authCreateTable).toBeTrue();
     });
 
     it('should deny authorization', async function() {
@@ -369,5 +381,201 @@ for (const [key, factory] of FACTORIES) {
       expect(authorizations.length).toBeGreaterThan(0);
     });
   });
-}
 
+  describe(`${key} update_hook`, function() {
+    let db;
+    beforeEach(async function() {
+      db = await sqlite3.open_v2(':memory:');
+    });
+  
+    afterEach(async function() {
+      await sqlite3.close(db);
+    });
+
+    it('should call update hook', async function() {
+      let rc;
+
+      let calls = [];
+      sqlite3.update_hook(db, (updateType, dbName, tblName, rowid) => {
+        calls.push([updateType, dbName, tblName, rowid]);
+      });
+
+      rc = await sqlite3.exec(db, `
+        CREATE TABLE t(i integer primary key, x);
+        INSERT INTO t VALUES (1, 'foo'), (2, 'bar'), (12345678987654321, 'baz');
+      `);
+      expect(rc).toEqual(SQLite.SQLITE_OK);
+      expect(calls).toEqual([
+        [18, "main", "t", 1n],
+        [18, "main", "t", 2n],
+        [18, "main", "t", 12345678987654321n],
+      ]);
+      
+      calls.splice(0, calls.length);
+      
+      await sqlite3.exec(db, `DELETE FROM t WHERE i = 2`);
+      expect(calls).toEqual([[9, "main", "t", 2n]]);
+
+      calls.splice(0, calls.length);
+      
+      await sqlite3.exec(db, `UPDATE t SET x = 'bar' WHERE i = 1`);
+      expect(calls).toEqual([[23, "main", "t", 1n]]);
+    });
+  });
+
+  describe(`${key} commit_hook`, function() {
+    let db;
+    beforeEach(async function() {
+      db = await sqlite3.open_v2(':memory:');
+    });
+  
+    afterEach(async function() {
+      await sqlite3.close(db);
+    });
+
+    it('should call commit hook', async function() {
+      let rc;
+
+      let callsCount = 0;
+      const resetCallsCount = () => callsCount = 0;
+
+      sqlite3.commit_hook(db, () => {
+        callsCount++;
+        return 0;
+      });
+      expect(callsCount).toEqual(0);
+      resetCallsCount();
+
+      rc = await sqlite3.exec(db, `
+        CREATE TABLE t(i integer primary key, x);
+      `);
+      expect(rc).toEqual(SQLite.SQLITE_OK);
+      expect(callsCount).toEqual(1);
+      resetCallsCount();
+
+      rc = await sqlite3.exec(db, `
+        SELECT * FROM t;
+      `);
+      expect(callsCount).toEqual(0);
+      resetCallsCount();
+
+      rc = await sqlite3.exec(db, `
+        BEGIN TRANSACTION;
+        INSERT INTO t VALUES (1, 'foo');
+        ROLLBACK;
+      `);
+      expect(callsCount).toEqual(0);
+      resetCallsCount();
+
+      rc = await sqlite3.exec(db, `
+        BEGIN TRANSACTION;
+        INSERT INTO t VALUES (1, 'foo');
+        INSERT INTO t VALUES (2, 'bar');
+        COMMIT;
+      `);
+      expect(callsCount).toEqual(1);
+      resetCallsCount();
+    });
+
+    it('can change commit hook', async function() {
+      let rc;
+      rc = await sqlite3.exec(db, `
+        CREATE TABLE t(i integer primary key, x);
+      `);
+      expect(rc).toEqual(SQLite.SQLITE_OK);
+
+      let a = 0;
+      let b = 0;
+
+      // set hook to increment `a` on commit
+      sqlite3.commit_hook(db, () => {
+        a++;
+        return 0;
+      });
+      rc = await sqlite3.exec(db, `
+        INSERT INTO t VALUES (1, 'foo');
+      `);
+      expect(a).toEqual(1);
+      expect(b).toEqual(0);
+
+      // switch to increment `b`
+      sqlite3.commit_hook(db, () => {
+        b++;
+        return 0;
+      });
+
+      rc = await sqlite3.exec(db, `
+        INSERT INTO t VALUES (2, 'bar');
+      `);
+      expect(rc).toEqual(SQLite.SQLITE_OK);
+      expect(a).toEqual(1);
+      expect(b).toEqual(1);
+
+      // disable hook by passing null
+      sqlite3.commit_hook(db, null);
+
+      rc = await sqlite3.exec(db, `
+        INSERT INTO t VALUES (3, 'qux');
+      `);
+      expect(rc).toEqual(SQLite.SQLITE_OK);
+      expect(a).toEqual(1);
+      expect(b).toEqual(1);
+    });
+
+    it('can rollback based on return value', async function() {
+      let rc;
+      rc = await sqlite3.exec(db, `
+        CREATE TABLE t(i integer primary key, x);
+      `);
+      expect(rc).toEqual(SQLite.SQLITE_OK);
+
+      // accept commit by returning 0
+      sqlite3.commit_hook(db, () => 0);
+      rc = await sqlite3.exec(db, `
+        INSERT INTO t VALUES (1, 'foo');
+      `);
+      expect(rc).toEqual(SQLite.SQLITE_OK);
+
+      // reject commit by returning 1, causing rollback
+      sqlite3.commit_hook(db, () => 1);
+      await expectAsync(
+        sqlite3.exec(db, `INSERT INTO t VALUES (2, 'bar');`)
+      ).toBeRejected();
+
+      // double-check that the insert was rolled back
+      let hasRow = false;
+      rc = await sqlite3.exec(db, `
+        SELECT * FROM t WHERE i = 2;
+      `, () => hasRow = true);
+      expect(rc).toEqual(SQLite.SQLITE_OK);
+      expect(hasRow).toBeFalse();
+    });
+
+    it('does not overwrite update_hook', async function() {
+      let rc;
+      rc = await sqlite3.exec(db, `
+        CREATE TABLE t(i integer primary key, x);
+      `);
+      expect(rc).toEqual(SQLite.SQLITE_OK);
+
+      let updateHookInvocationsCount = 0;
+      sqlite3.update_hook(db, (...args) => {
+        updateHookInvocationsCount++;
+      });
+
+      let commitHookInvocationsCount = 0;
+      sqlite3.commit_hook(db, () => {
+        commitHookInvocationsCount++;
+        return 0;
+      });
+
+      rc = await sqlite3.exec(db, `
+        INSERT INTO t VALUES (1, 'foo');
+      `);
+      expect(rc).toEqual(SQLite.SQLITE_OK);
+
+      expect(updateHookInvocationsCount).toEqual(1);
+      expect(commitHookInvocationsCount).toEqual(1);
+    });
+  });
+}

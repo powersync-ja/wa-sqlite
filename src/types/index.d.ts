@@ -475,6 +475,19 @@ declare interface SQLiteAPI {
   column_type(stmt: number, i: number): number;
 
   /**
+   * Register a commit hook
+   * 
+   * @see https://www.sqlite.org/c3ref/commit_hook.html
+   *
+   * @param db database pointer
+   * @param callback If a non-zero value is returned, commit is converted into
+   * a rollback; disables callback when null
+   */
+  commit_hook(
+    db: number,
+    callback: (() => number) | null): void;
+
+  /**
    * Create or redefine SQL functions
    * 
    * The application data passed is ignored. Use closures instead.
@@ -756,6 +769,26 @@ declare interface SQLiteAPI {
    * (rejects on error)
    */
   step(stmt: number): Promise<number>;
+
+   /**
+   * Register an update hook
+   * 
+   * The callback is invoked whenever a row is updated, inserted, or deleted
+   * in a rowid table on this connection.
+   * @see https://www.sqlite.org/c3ref/update_hook.html
+   *
+   * updateType is one of:
+   * - SQLITE_DELETE: 9
+   * - SQLITE_INSERT: 18
+   * - SQLITE_UPDATE: 23
+   * @see https://www.sqlite.org/c3ref/c_alter_table.html
+   * 
+   * @param db database pointer
+   * @param callback
+   */
+   update_hook(
+    db: number,
+    callback: (updateType: number, dbName: string|null, tblName: string|null, rowid: bigint) => void): void;
 
   /**
    * Extract a value from `sqlite3_value`
