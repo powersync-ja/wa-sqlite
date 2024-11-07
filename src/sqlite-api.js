@@ -27,10 +27,6 @@ export class SQLiteError extends Error {
 
 const async = true;
 
-const onTableChangeCallbacks = {};
-globalThis.__onTablesChanged = function(db, opType, tableName, rowId) {
-  onTableChangeCallbacks[db]?.(opType, tableName, rowId);
-};
 
 /**
  * Builds a Javascript API from the Emscripten module. This API is still
@@ -532,51 +528,6 @@ export function Factory(Module) {
     };
   })();
 
-  sqlite3.register_table_onchange_hook = function(db, callback) {
-    // Register hooks for this DB as a global hook
-    // It will call the global handler above
-    Module.ccall('register_table_update_hook', 'int', ['number'], [db]);
-
-    onTableChangeCallbacks[db] = function(opType, tableNamePtr, rowId) {
-      // Need to get the string from the pointer
-      // const tableName = Module.UTF8ToString(Module.getValue(tableNamePtr, '*'));
-      const memory = new DataView(Module.HEAPU8.buffer);
-
-      // Find the null terminator to determine the string length
-      let length = 0;
-      while (memory.getUint8(tableNamePtr + length) !== 0) {
-        length++;
-      }
-
-      // Extract the string content
-      const stringBytes = new Uint8Array(Module.HEAPU8.buffer, tableNamePtr, length);
-      const tableName = new TextDecoder().decode(stringBytes);
-
-      /**
-       * Call the callback inside a setTimeout to avoid blocking SQLite.
-       * We use a setTimeout only after fetching data from the heap to avoid
-       * accessing memory which has been freed. 
-       */
-      setTimeout(() => callback(opType, tableName, rowId), 0)
-    };
-  };
-
-  sqlite3.prepare_v2 = (function() {
-    const fname = 'sqlite3_prepare_v2';
-    const f = Module.cwrap(fname, ...decl('nnnnn:n'), { async });
-    return async function(db, sql) {
-      const result = await f(db, sql, -1, tmpPtr[0], tmpPtr[1]);
-      check(fname, result, db);
-
-      const stmt = Module.getValue(tmpPtr[0], '*');
-      if (stmt) {
-        mapStmtToDB.set(stmt, db);
-        return { stmt, sql: Module.getValue(tmpPtr[1], '*') };
-      }
-      return null;
-    };
-  })();
-
   sqlite3.progress_handler = function(db, nProgressOps, handler, userData) {
     verifyDatabase(db);
     Module.progress_handler(db, nProgressOps, handler, userData);
@@ -927,35 +878,6 @@ export function Factory(Module) {
   sqlite3.vfs_register = function(vfs, makeDefault) {
     const result = Module.vfs_register(vfs, makeDefault);
     return check('sqlite3_vfs_register', result);
-  };
-
-  sqlite3.register_table_onchange_hook = function(db, callback) {
-    // Register hooks for this DB as a global hook
-    // It will call the global handler above
-    Module.ccall('register_table_update_hook', 'int', ['number'], [db]);
-
-    onTableChangeCallbacks[db] = function(opType, tableNamePtr, rowId) {
-      // Need to get the string from the pointer
-      // const tableName = Module.UTF8ToString(Module.getValue(tableNamePtr, '*'));
-      const memory = new DataView(Module.HEAPU8.buffer);
-
-      // Find the null terminator to determine the string length
-      let length = 0;
-      while (memory.getUint8(tableNamePtr + length) !== 0) {
-        length++;
-      }
-
-      // Extract the string content
-      const stringBytes = new Uint8Array(Module.HEAPU8.buffer, tableNamePtr, length);
-      const tableName = new TextDecoder().decode(stringBytes);
-
-      /**
-       * Call the callback inside a setTimeout to avoid blocking SQLite.
-       * We use a setTimeout only after fetching data from the heap to avoid
-       * accessing memory which has been freed. 
-       */
-      setTimeout(() => callback(opType, tableName, rowId), 0)
-    };
   };
 
   function check(fname, result, db = null, allowed = [SQLite.SQLITE_OK]) {

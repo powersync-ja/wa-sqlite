@@ -259,6 +259,5 @@
   "_sqlite3_wal_autocheckpoint",
   "_sqlite3_wal_checkpoint",
   "_sqlite3_wal_checkpoint_v2",
-  "_sqlite3_wal_hook",
-  "_register_table_update_hook"
+  "_sqlite3_wal_hook"
 ]

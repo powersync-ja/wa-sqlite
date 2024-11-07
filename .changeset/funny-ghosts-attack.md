@@ -2,4 +2,4 @@
 '@journeyapps/wa-sqlite': minor
 ---
 
-Load PowerSync SQLite core as a dynamic sidemodule
+Updated PowerSync core build steps by removing Git submodules. Added ability to load PowerSync extension as a dynamic side module.

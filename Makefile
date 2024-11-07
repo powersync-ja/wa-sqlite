@@ -101,7 +101,6 @@ COMBINED_EMFLAGS_INTERFACES = \
 
 EMFLAGS_LIBRARIES = \
 	--js-library src/libadapters.js \
-	--js-library src/libtableupdates.js \
 	--post-js src/libauthorizer.js \
 	--post-js src/libfunction.js \
 	--post-js src/libhook.js \
