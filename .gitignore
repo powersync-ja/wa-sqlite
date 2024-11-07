@@ -11,6 +11,7 @@
 
 # PowerSync Rust Core
 libpowersync*.wasm
+powersync-libs
 
 /cache
 /debug

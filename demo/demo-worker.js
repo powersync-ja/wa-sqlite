@@ -9,12 +9,14 @@ const BUILDS = new Map([
   // ['default', '../debug/wa-sqlite.mjs'],
   // ['asyncify', '../debug/wa-sqlite-async.mjs'],
   // ['jspi', '../debug/wa-sqlite-jspi.mjs'],
+  // Dynamic builds
+  ['default-dynamic', '../dist/wa-sqlite-dynamic-main.mjs'],
+  ['asyncify-dynamic', '../dist/wa-sqlite-async-dynamic-main.mjs'],
 ]);
 
 const EXT_WASM = new Map([
-  ['default', 'libpowersync.wasm'],
-  ['asyncify', 'libpowersync-async.wasm'],
-  ['jspi', 'libpowersync-jspi.wasm'],
+  ['default-dynamic', 'libpowersync.wasm'],
+  ['asyncify-dynamic', 'libpowersync-async.wasm'],
 ]);
 
 /**
@@ -83,7 +85,6 @@ maybeReset().then(async () => {
   const buildName = searchParams.get('build') || BUILDS.keys().next().value;
   const configName = searchParams.get('config') || VFS_CONFIGS.keys().next().value;
   const config = VFS_CONFIGS.get(configName);
-  const extWasm = EXT_WASM.get(buildName);
 
   const dbName = searchParams.get('dbName') ?? 'hello';
   const vfsName = searchParams.get('vfsName') ?? config.vfsName ?? 'demo';
@@ -102,17 +103,24 @@ maybeReset().then(async () => {
 
   const sqlite3 = SQLite.Factory(module);
 
-  // Load the extension library into this scope
-  let extScope = {};
-  await module.loadDynamicLibrary(
-    extWasm,
-    { loadAsync: true },
-    extScope
-  );
 
-  // This calls sqlite3_auto_extension(sqlite3_powersync_init).
-  // For generic extensions, we'd need to call sqlite3_auto_extension directly.
-  extScope.powersync_init_static();
+  if (buildName.endsWith('-dynamic')) {
+    const extWasm = EXT_WASM.get(buildName);
+    // Load the extension library into this scope
+    let extScope = {};
+    await module.loadDynamicLibrary(
+      extWasm,
+      { loadAsync: true },
+      extScope
+    );
+
+    // This calls sqlite3_auto_extension(sqlite3_powersync_init).
+    // For generic extensions, we'd need to call sqlite3_auto_extension directly.
+    extScope.powersync_init_static();
+  } else {
+    // This is not part of the Sqlite3 API
+    module.ccall('setup_powersync', 'int', []);
+  }
 
   if (config.vfsModule) {
     // Create the VFS and register it as the default file system.

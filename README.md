@@ -51,11 +51,13 @@ make -B
 
 ### PowerSync Core
 
-To update the PowerSync SQLite core see the [script](./scripts/powersync-core.js). Edit the `CORE_VERSION` and run the script with
+The PowerSync Rust SQLite extension is used both statically and dynamically in this package. The static core binary is downloaded in the `Makefile` during compilation. The dynamic WASM files are not commited to this repository's `dist` folder, instead the WASM files are downloaded as a `postinstall` script.
 
-```bash
-node scripts/powersync-core.js
-```
+Update the `powersync-version` file in order to update the PowerSync core version.
+
+### Usage with PowerSync
+
+This fork of WA-SQLite can be used with PowerSync either statically or dynamically. See the [demo worker](./demo/demo-worker.js) for usage.
 
 ## API
 Javascript wrappers for core SQLITE C API functions (and some others) are provided. Some convenience functions are also provided to reduce boilerplate. Here is sample code to load the library and call the API:
