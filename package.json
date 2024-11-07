@@ -21,7 +21,8 @@
     "src/examples/*",
     "dist/*",
     "test/*",
-    "scripts/download-dynamic-core.js"
+    "scripts/download-dynamic-core.js",
+    "scripts/tools/powersync-download.js"
   ],
   "scripts": {
     "build-docs": "typedoc",
