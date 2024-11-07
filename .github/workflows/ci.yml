@@ -64,9 +64,6 @@ jobs:
           actions-cache-folder: ${{env.EM_CACHE_FOLDER}}
       - run: emcc -v
 
-      - name: Make script executable
-        run: node scripts/download-core-build.js
-
       - name: Test WASM build
         run: |
           make clean && make
