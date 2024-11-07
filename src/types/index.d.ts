@@ -602,15 +602,6 @@ declare interface SQLiteAPI {
   open_v2(zFilename: string, iFlags?: number, zVfs?: string): Promise<number>;
 
   /**
-   * Registers table row on change callback
-   *
-   */
-  register_table_onchange_hook(
-    db: number,
-    callback: (opType: number, tableName: string, rowId: number) => void
-  ): void;
-
-  /**
    * Specify callback to be invoked between long-running queries
    * 
    * The application data passed is ignored. Use closures instead.
