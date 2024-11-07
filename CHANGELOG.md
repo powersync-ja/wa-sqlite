@@ -1,5 +1,17 @@
 # @journeyapps/wa-sqlite
 
+## 0.4.1
+
+### Patch Changes
+
+- 588937a: Fix bug where table change update notifications would access invalid memory locations under certain conditions.
+
+## 0.4.0
+
+### Minor Changes
+
+- 95b8ba1: powersync-sqlite-core 0.3.0
+
 ## 0.3.0
 
 ### Minor Changes
