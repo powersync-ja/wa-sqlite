@@ -1,5 +1,11 @@
 # @journeyapps/wa-sqlite
 
+## 0.4.2
+
+### Patch Changes
+
+- f23bd69: Use powersync-sqlite-core 0.3.6 to fix dangling rows
+
 ## 0.4.1
 
 ### Patch Changes
