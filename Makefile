@@ -18,8 +18,8 @@ CFILES = \
 	libvfs.c \
 	$(CFILES_EXTRA)
 
-POWERSYNC_CFILES = \
-	setup_powersync.c
+
+POWERSYNC_CFILES = $(notdir $(wildcard powersync-static/*.c))
 
 JSFILES = \
 	src/libauthorizer.js \

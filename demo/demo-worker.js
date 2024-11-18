@@ -119,7 +119,7 @@ maybeReset().then(async () => {
     extScope.powersync_init_static();
   } else {
     // This is not part of the Sqlite3 API
-    module.ccall('setup_powersync', 'int', []);
+    module.ccall('powersync_init_static', 'int', []);
   }
 
   if (config.vfsModule) {

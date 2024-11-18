@@ -14,11 +14,19 @@ const RELEASE_FILES = [`libpowersync.wasm`, `libpowersync-async.wasm`];
 const DIST_DIR = path.resolve(__dirname, '../dist');
 
 async function downloadDynamicCore() {
-  for (const asset of RELEASE_FILES) {
-    await downloadReleaseAsset({
-      asset,
-      outputPath: path.join(DIST_DIR, asset)
-    });
+  try {
+    for (const asset of RELEASE_FILES) {
+      await downloadReleaseAsset({
+        asset,
+        outputPath: path.join(DIST_DIR, asset)
+      });
+    }
+  } catch (ex) {
+    console.warn(
+      `Could not download PowerSync SQLite core for dynamic linking. Dynamic builds require ${RELEASE_FILES.join(
+        '/'
+      )} asset files. Static builds should still function correctly. ${ex}`
+    );
   }
 }
 
