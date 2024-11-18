@@ -1,5 +1,15 @@
 # @journeyapps/wa-sqlite
 
+## 1.0.0
+
+### Major Changes
+
+- 187d9cd: Updated from upstream to v1.0.4
+
+### Minor Changes
+
+- f9f5c84: Updated PowerSync core build steps by removing Git submodules. Added ability to load PowerSync extension as a dynamic side module.
+
 ## 0.4.2
 
 ### Patch Changes
