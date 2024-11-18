@@ -13,6 +13,7 @@ const getPowerSyncVersion = async () => {
 
 export const downloadReleaseAsset = async ({ asset, outputPath }) => {
   const version = await getPowerSyncVersion();
+  console.info(`Downloading ${asset}@${version}`);
 
   const response = await fetch(
     `https://github.com/powersync-ja/powersync-sqlite-core/releases/download/${version}/${asset}`
