@@ -2,13 +2,15 @@
 SQLITE_VERSION = version-3.47.0
 SQLITE_TARBALL_URL = https://www.sqlite.org/src/tarball/sqlite.tar.gz?r=${SQLITE_VERSION}
 
+# MC_SQLITE_TARBALL_URL = https://github.com/utelle/SQLite3MultipleCiphers/releases/download/v1.9.0/sqlite3mc-1.9.0-sqlite-3.47.0-amalgamation.zip
 EXTENSION_FUNCTIONS = extension-functions.c
 EXTENSION_FUNCTIONS_URL = https://www.sqlite.org/contrib/download/extension-functions.c?get=25
 EXTENSION_FUNCTIONS_SHA3 = ee39ddf5eaa21e1d0ebcbceeab42822dd0c4f82d8039ce173fd4814807faabfa
 
+# TODO this requires a manaual step of extracting sqlite3mc_alamgoajhsd.c to the deps folder
 # WA-SQLite source files
 CFILES = \
-	sqlite3.c \
+	sqlite3mc_amalgamation.c \
 	extension-functions.c \
 	main.c \
 	libauthorizer.c \
@@ -129,6 +131,7 @@ WASQLITE_DEFINES = \
 	-DSQLITE_DEFAULT_MEMSTATUS=0 \
 	-DSQLITE_DEFAULT_WAL_SYNCHRONOUS=1 \
 	-DSQLITE_DQS=0 \
+	-D__WASM__ \
 	-DSQLITE_LIKE_DOESNT_MATCH_BLOBS \
 	-DSQLITE_MAX_EXPR_DEPTH=0 \
 	-DSQLITE_OMIT_AUTOINIT \
@@ -172,10 +175,7 @@ $(COMBINED_EXPORTED_FUNCTIONS): $(EXPORTED_FUNCTIONS) $(POWERSYNC_EXPORTED_FUNCT
 	jq -s 'add' $(EXPORTED_FUNCTIONS) $(POWERSYNC_EXPORTED_FUNCTIONS) > $(COMBINED_EXPORTED_FUNCTIONS)
 
 deps/$(SQLITE_VERSION)/sqlite3.h deps/$(SQLITE_VERSION)/sqlite3.c:
-	mkdir -p cache/$(SQLITE_VERSION)
-	curl -LsS $(SQLITE_TARBALL_URL) | tar -xzf - -C cache/$(SQLITE_VERSION)/ --strip-components=1
-	mkdir -p deps/$(SQLITE_VERSION)
-	(cd deps/$(SQLITE_VERSION); ../../cache/$(SQLITE_VERSION)/configure --enable-all && make sqlite3.c)
+
 
 # Download static files from PowerSync Core repository
 $(POWERSYNC_STATIC_FILES):
