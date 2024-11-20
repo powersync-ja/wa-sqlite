@@ -77,8 +77,7 @@ EMFLAGS_DEBUG = \
 	$(EMFLAGS_COMMON)
 
 EMFLAGS_DIST = \
-	-Oz \
-	-flto \
+	-s ASSERTIONS=1 \
 	$(EMFLAGS_COMMON)
 
 # Need to export all the Main module's symbols

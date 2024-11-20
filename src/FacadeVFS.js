@@ -217,6 +217,21 @@ export class FacadeVFS extends VFS.Base {
 
   /**
    * @param {number} pVfs 
+   * @param {number} nByte 
+   * @param {number} pCharOut
+   * @returns {number|Promise<number>}
+   */
+  xRandomness(pVfs, nByte, pCharOut) {
+    const randomArray = new Uint8Array(nByte);
+    crypto.getRandomValues(randomArray);
+    // Copy randomArray to the WebAssembly memory
+    const buffer = pCharOut; // Pointer to memory in WebAssembly
+    this._module.HEAPU8.set(randomArray, buffer); // Copy randomArray into memory starting at buffer
+    return nByte;
+  }
+
+  /**
+   * @param {number} pVfs 
    * @param {number} zName 
    * @param {number} syncDir 
    * @returns {number|Promise<number>}
