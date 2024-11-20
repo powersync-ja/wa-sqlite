@@ -28,7 +28,7 @@ var readyPromise = new Promise((resolve, reject) => {
   readyPromiseResolve = resolve;
   readyPromiseReject = reject;
 });
-["_RegisterExtensionFunctions","_malloc","_memcpy","_memcmp","_memset","_getTempRet0","_free","_sqlite3_aggregate_context","_sqlite3_auto_extension","_sqlite3_autovacuum_pages","_sqlite3_backup_finish","_sqlite3_backup_init","_sqlite3_backup_pagecount","_sqlite3_backup_remaining","_sqlite3_enable_load_extension","_sqlite3_backup_step","_sqlite3_bind_blob","_sqlite3_bind_blob64","_sqlite3_bind_double","_sqlite3_bind_int","_sqlite3_bind_int64","_sqlite3_bind_null","_sqlite3_bind_parameter_count","_sqlite3_bind_parameter_index","_sqlite3_bind_parameter_name","_sqlite3_bind_pointer","_sqlite3_bind_text","_sqlite3_bind_text16","_sqlite3_bind_text64","_sqlite3_bind_value","_sqlite3_bind_zeroblob","_sqlite3_bind_zeroblob64","_sqlite3_blob_bytes","_sqlite3_blob_close","_sqlite3_blob_open","_sqlite3_blob_read","_sqlite3_blob_reopen","_sqlite3_blob_write","_sqlite3_busy_handler","_sqlite3_busy_timeout","_sqlite3_cancel_auto_extension","_sqlite3_changes","_sqlite3_changes64","_sqlite3_clear_bindings","_sqlite3_close","_sqlite3_close_v2","_sqlite3_collation_needed","_sqlite3_collation_needed16","_sqlite3_column_blob","_sqlite3_column_bytes","_sqlite3_column_bytes16","_sqlite3_column_count","_sqlite3_column_double","_sqlite3_column_int","_sqlite3_column_int64","_sqlite3_column_name","_sqlite3_column_name16","_sqlite3_column_text","_sqlite3_column_text16","_sqlite3_column_type","_sqlite3_column_value","_sqlite3_commit_hook","_sqlite3_compileoption_get","_sqlite3_compileoption_used","_sqlite3_complete","_sqlite3_complete16","_sqlite3_config","_sqlite3_context_db_handle","_sqlite3_create_collation","_sqlite3_create_collation16","_sqlite3_create_collation_v2","_sqlite3_create_filename","_sqlite3_create_function","_sqlite3_create_function16","_sqlite3_create_function_v2","_sqlite3_create_module","_sqlite3_create_module_v2","_sqlite3_create_window_function","_sqlite3_data_count","_sqlite3_database_file_object","_sqlite3_db_cacheflush","_sqlite3_db_config","_sqlite3_db_filename","_sqlite3_db_handle","_sqlite3_db_mutex","_sqlite3_db_name","_sqlite3_db_readonly","_sqlite3_db_release_memory","_sqlite3_db_status","_sqlite3_declare_vtab","_sqlite3_deserialize","_sqlite3_drop_modules","_sqlite3_errcode","_sqlite3_errmsg","_sqlite3_errmsg16","_sqlite3_error_offset","_sqlite3_errstr","_sqlite3_exec","_sqlite3_expanded_sql","_sqlite3_extended_errcode","_sqlite3_extended_result_codes","_sqlite3_file_control","_sqlite3_filename_database","_sqlite3_filename_journal","_sqlite3_filename_wal","_sqlite3_finalize","_sqlite3_free","_sqlite3_free_filename","_sqlite3_free_table","_sqlite3_get_autocommit","_sqlite3_get_auxdata","_sqlite3_get_clientdata","_sqlite3_get_table","_sqlite3_hard_heap_limit64","_sqlite3_initialize","_sqlite3_interrupt","_sqlite3_is_interrupted","_sqlite3_keyword_check","_sqlite3_keyword_count","_sqlite3_keyword_name","_sqlite3_last_insert_rowid","_sqlite3_libversion","_sqlite3_libversion_number","_sqlite3_limit","_sqlite3_log","_sqlite3_malloc","_sqlite3_malloc64","_sqlite3_memory_highwater","_sqlite3_memory_used","_sqlite3_mprintf","_sqlite3_msize","_sqlite3_next_stmt","_sqlite3_open","_sqlite3_open16","_sqlite3_open_v2","_sqlite3_os_end","_sqlite3_os_init","_sqlite3_overload_function","_sqlite3_prepare","_sqlite3_prepare16","_sqlite3_prepare16_v2","_sqlite3_prepare16_v3","_sqlite3_prepare_v2","_sqlite3_prepare_v3","_sqlite3_progress_handler","_sqlite3_randomness","_sqlite3_realloc","_sqlite3_realloc64","_sqlite3_load_extension","_sqlite3_release_memory","_sqlite3_reset","_sqlite3_reset_auto_extension","_sqlite3_result_blob","_sqlite3_result_blob64","_sqlite3_result_double","_sqlite3_result_error","_sqlite3_result_error16","_sqlite3_result_error_code","_sqlite3_result_error_nomem","_sqlite3_result_error_toobig","_sqlite3_result_int","_sqlite3_result_int64","_sqlite3_result_null","_sqlite3_result_pointer","_sqlite3_result_subtype","_sqlite3_result_text","_sqlite3_result_text16","_sqlite3_result_text16be","_sqlite3_result_text16le","_sqlite3_result_text64","_sqlite3_result_value","_sqlite3_result_zeroblob","_sqlite3_result_zeroblob64","_sqlite3_rollback_hook","_sqlite3_serialize","_sqlite3_set_authorizer","_sqlite3_set_auxdata","_sqlite3_set_clientdata","_sqlite3_set_last_insert_rowid","_sqlite3_shutdown","_sqlite3_sleep","_sqlite3_snprintf","_sqlite3_soft_heap_limit64","_sqlite3_sourceid","_sqlite3_sql","_sqlite3_status","_sqlite3_status64","_sqlite3_step","_sqlite3_stmt_busy","_sqlite3_stmt_explain","_sqlite3_stmt_isexplain","_sqlite3_stmt_readonly","_sqlite3_stmt_status","_sqlite3_str_append","_sqlite3_str_appendall","_sqlite3_str_appendchar","_sqlite3_str_appendf","_sqlite3_str_errcode","_sqlite3_str_finish","_sqlite3_str_length","_sqlite3_str_new","_sqlite3_str_reset","_sqlite3_str_value","_sqlite3_str_vappendf","_sqlite3_strglob","_sqlite3_stricmp","_sqlite3_strlike","_sqlite3_strnicmp","_sqlite3_system_errno","_sqlite3_table_column_metadata","_sqlite3_test_control","_sqlite3_threadsafe","_sqlite3_total_changes","_sqlite3_total_changes64","_sqlite3_trace_v2","_sqlite3_txn_state","_sqlite3_update_hook","_sqlite3_uri_boolean","_sqlite3_uri_int64","_sqlite3_uri_key","_sqlite3_uri_parameter","_sqlite3_user_data","_sqlite3_value_blob","_sqlite3_value_bytes","_sqlite3_value_bytes16","_sqlite3_value_double","_sqlite3_value_dup","_sqlite3_value_encoding","_sqlite3_value_free","_sqlite3_value_frombind","_sqlite3_value_int","_sqlite3_value_int64","_sqlite3_value_nochange","_sqlite3_value_numeric_type","_sqlite3_value_pointer","_sqlite3_value_subtype","_sqlite3_value_text","_sqlite3_value_text16","_sqlite3_value_text16be","_sqlite3_value_text16le","_sqlite3_value_type","_sqlite3_version","_sqlite3_vfs_find","_sqlite3_vfs_register","_sqlite3_vfs_unregister","_sqlite3_vmprintf","_sqlite3_vsnprintf","_sqlite3_vtab_collation","_sqlite3_vtab_config","_sqlite3_vtab_distinct","_sqlite3_vtab_in","_sqlite3_vtab_in_first","_sqlite3_vtab_in_next","_sqlite3_vtab_nochange","_sqlite3_vtab_on_conflict","_sqlite3_vtab_rhs_value","_sqlite3_wal_autocheckpoint","_sqlite3_wal_checkpoint","_sqlite3_wal_checkpoint_v2","_sqlite3_wal_hook","_sqlite3mc_vfs_create","_powersync_init_static","_memory","_getSqliteFree","_libauthorizer_set_authorizer","_libfunction_create_function","_libhook_commit_hook","_libhook_update_hook","_libprogress_progress_handler","_libvfs_vfs_register","___indirect_function_table","_main","onRuntimeInitialized"].forEach((prop) => {
+["_RegisterExtensionFunctions","_malloc","_memcpy","_memcmp","_memset","_getTempRet0","_free","_sqlite3_aggregate_context","_sqlite3_auto_extension","_sqlite3_autovacuum_pages","_sqlite3_backup_finish","_sqlite3_backup_init","_sqlite3_backup_pagecount","_sqlite3_backup_remaining","_sqlite3_enable_load_extension","_sqlite3_backup_step","_sqlite3_bind_blob","_sqlite3_bind_blob64","_sqlite3_bind_double","_sqlite3_bind_int","_sqlite3_bind_int64","_sqlite3_bind_null","_sqlite3_bind_parameter_count","_sqlite3_bind_parameter_index","_sqlite3_bind_parameter_name","_sqlite3_bind_pointer","_sqlite3_bind_text","_sqlite3_bind_text16","_sqlite3_bind_text64","_sqlite3_bind_value","_sqlite3_bind_zeroblob","_sqlite3_bind_zeroblob64","_sqlite3_blob_bytes","_sqlite3_blob_close","_sqlite3_blob_open","_sqlite3_blob_read","_sqlite3_blob_reopen","_sqlite3_blob_write","_sqlite3_busy_handler","_sqlite3_busy_timeout","_sqlite3_cancel_auto_extension","_sqlite3_changes","_sqlite3_changes64","_sqlite3_clear_bindings","_sqlite3_close","_sqlite3_close_v2","_sqlite3_collation_needed","_sqlite3_collation_needed16","_sqlite3_column_blob","_sqlite3_column_bytes","_sqlite3_column_bytes16","_sqlite3_column_count","_sqlite3_column_double","_sqlite3_column_int","_sqlite3_column_int64","_sqlite3_column_name","_sqlite3_column_name16","_sqlite3_column_text","_sqlite3_column_text16","_sqlite3_column_type","_sqlite3_column_value","_sqlite3_commit_hook","_sqlite3_compileoption_get","_sqlite3_compileoption_used","_sqlite3_complete","_sqlite3_complete16","_sqlite3_config","_sqlite3_context_db_handle","_sqlite3_create_collation","_sqlite3_create_collation16","_sqlite3_create_collation_v2","_sqlite3_create_filename","_sqlite3_create_function","_sqlite3_create_function16","_sqlite3_create_function_v2","_sqlite3_create_module","_sqlite3_create_module_v2","_sqlite3_create_window_function","_sqlite3_data_count","_sqlite3_database_file_object","_sqlite3_db_cacheflush","_sqlite3_db_config","_sqlite3_db_filename","_sqlite3_db_handle","_sqlite3_db_mutex","_sqlite3_db_name","_sqlite3_db_readonly","_sqlite3_db_release_memory","_sqlite3_db_status","_sqlite3_declare_vtab","_sqlite3_deserialize","_sqlite3_drop_modules","_sqlite3_errcode","_sqlite3_errmsg","_sqlite3_errmsg16","_sqlite3_error_offset","_sqlite3_errstr","_sqlite3_exec","_sqlite3_expanded_sql","_sqlite3_extended_errcode","_sqlite3_extended_result_codes","_sqlite3_file_control","_sqlite3_filename_database","_sqlite3_filename_journal","_sqlite3_filename_wal","_sqlite3_finalize","_sqlite3_free","_sqlite3_free_filename","_sqlite3_free_table","_sqlite3_get_autocommit","_sqlite3_get_auxdata","_sqlite3_get_clientdata","_sqlite3_get_table","_sqlite3_hard_heap_limit64","_sqlite3_initialize","_sqlite3_interrupt","_sqlite3_is_interrupted","_sqlite3_keyword_check","_sqlite3_keyword_count","_sqlite3_keyword_name","_sqlite3_last_insert_rowid","_sqlite3_libversion","_sqlite3_libversion_number","_sqlite3_limit","_sqlite3_log","_sqlite3_malloc","_sqlite3_malloc64","_sqlite3_memory_highwater","_sqlite3_memory_used","_sqlite3_mprintf","_sqlite3_msize","_sqlite3_next_stmt","_sqlite3_open","_sqlite3_open16","_sqlite3_open_v2","_sqlite3_os_end","_sqlite3_os_init","_sqlite3_overload_function","_sqlite3_prepare","_sqlite3_prepare16","_sqlite3_prepare16_v2","_sqlite3_prepare16_v3","_sqlite3_prepare_v2","_sqlite3_prepare_v3","_sqlite3_progress_handler","_sqlite3_randomness","_sqlite3_realloc","_sqlite3_realloc64","_sqlite3_load_extension","_sqlite3_release_memory","_sqlite3_reset","_sqlite3_reset_auto_extension","_sqlite3_result_blob","_sqlite3_result_blob64","_sqlite3_result_double","_sqlite3_result_error","_sqlite3_result_error16","_sqlite3_result_error_code","_sqlite3_result_error_nomem","_sqlite3_result_error_toobig","_sqlite3_result_int","_sqlite3_result_int64","_sqlite3_result_null","_sqlite3_result_pointer","_sqlite3_result_subtype","_sqlite3_result_text","_sqlite3_result_text16","_sqlite3_result_text16be","_sqlite3_result_text16le","_sqlite3_result_text64","_sqlite3_result_value","_sqlite3_result_zeroblob","_sqlite3_result_zeroblob64","_sqlite3_rollback_hook","_sqlite3_serialize","_sqlite3_set_authorizer","_sqlite3_set_auxdata","_sqlite3_set_clientdata","_sqlite3_set_last_insert_rowid","_sqlite3_shutdown","_sqlite3_sleep","_sqlite3_snprintf","_sqlite3_soft_heap_limit64","_sqlite3_sourceid","_sqlite3_sql","_sqlite3_status","_sqlite3_status64","_sqlite3_step","_sqlite3_stmt_busy","_sqlite3_stmt_explain","_sqlite3_stmt_isexplain","_sqlite3_stmt_readonly","_sqlite3_stmt_status","_sqlite3_str_append","_sqlite3_str_appendall","_sqlite3_str_appendchar","_sqlite3_str_appendf","_sqlite3_str_errcode","_sqlite3_str_finish","_sqlite3_str_length","_sqlite3_str_new","_sqlite3_str_reset","_sqlite3_str_value","_sqlite3_str_vappendf","_sqlite3_strglob","_sqlite3_stricmp","_sqlite3_strlike","_sqlite3_strnicmp","_sqlite3_system_errno","_sqlite3_table_column_metadata","_sqlite3_test_control","_sqlite3_threadsafe","_sqlite3_total_changes","_sqlite3_total_changes64","_sqlite3_trace_v2","_sqlite3_txn_state","_sqlite3_update_hook","_sqlite3_uri_boolean","_sqlite3_uri_int64","_sqlite3_uri_key","_sqlite3_uri_parameter","_sqlite3_user_data","_sqlite3_value_blob","_sqlite3_value_bytes","_sqlite3_value_bytes16","_sqlite3_value_double","_sqlite3_value_dup","_sqlite3_value_encoding","_sqlite3_value_free","_sqlite3_value_frombind","_sqlite3_value_int","_sqlite3_value_int64","_sqlite3_value_nochange","_sqlite3_value_numeric_type","_sqlite3_value_pointer","_sqlite3_value_subtype","_sqlite3_value_text","_sqlite3_value_text16","_sqlite3_value_text16be","_sqlite3_value_text16le","_sqlite3_value_type","_sqlite3_version","_sqlite3_vfs_find","_sqlite3_vfs_register","_sqlite3_vfs_unregister","_sqlite3_vmprintf","_sqlite3_vsnprintf","_sqlite3_vtab_collation","_sqlite3_vtab_config","_sqlite3_vtab_distinct","_sqlite3_vtab_in","_sqlite3_vtab_in_first","_sqlite3_vtab_in_next","_sqlite3_vtab_nochange","_sqlite3_vtab_on_conflict","_sqlite3_vtab_rhs_value","_sqlite3_wal_autocheckpoint","_sqlite3_wal_checkpoint","_sqlite3_wal_checkpoint_v2","_sqlite3_wal_hook","_powersync_init_static","_memory","_getSqliteFree","_libauthorizer_set_authorizer","_libfunction_create_function","_libhook_commit_hook","_libhook_update_hook","_libprogress_progress_handler","_libvfs_vfs_register","___indirect_function_table","_main","onRuntimeInitialized"].forEach((prop) => {
   if (!Object.getOwnPropertyDescriptor(readyPromise, prop)) {
     Object.defineProperty(readyPromise, prop, {
       get: () => abort('You are getting ' + prop + ' on the Promise object, instead of the instance. Use .then() to get called back with the instance, see the MODULARIZE docs in src/settings.js'),
@@ -42,7 +42,7 @@ var readyPromise = new Promise((resolve, reject) => {
 
 // Attempt to auto-detect the environment
 var ENVIRONMENT_IS_WEB = typeof window == 'object';
-var ENVIRONMENT_IS_WORKER = typeof importScripts == 'function';
+var ENVIRONMENT_IS_WORKER = typeof WorkerGlobalScope != 'undefined';
 // N.b. Electron.js environment is simultaneously a NODE-environment, but
 // also a web environment.
 var ENVIRONMENT_IS_NODE = typeof process == 'object' && typeof process.versions == 'object' && typeof process.versions.node == 'string' && process.type != 'renderer';
@@ -79,7 +79,7 @@ var readAsync, readBinary;
 
 if (ENVIRONMENT_IS_SHELL) {
 
-  if ((typeof process == 'object' && typeof require === 'function') || typeof window == 'object' || typeof importScripts == 'function') throw new Error('not compiled for this environment (did you build to HTML and try to run it not on the web, or set ENVIRONMENT to something - like node - and run it someplace else - like on the web?)');
+  if ((typeof process == 'object' && typeof require === 'function') || typeof window == 'object' || typeof WorkerGlobalScope != 'undefined') throw new Error('not compiled for this environment (did you build to HTML and try to run it not on the web, or set ENVIRONMENT to something - like node - and run it someplace else - like on the web?)');
 
 } else
 
@@ -109,7 +109,7 @@ if (ENVIRONMENT_IS_WEB || ENVIRONMENT_IS_WORKER) {
     scriptDirectory = scriptDirectory.substr(0, scriptDirectory.replace(/[?#].*/, '').lastIndexOf('/')+1);
   }
 
-  if (!(typeof window == 'object' || typeof importScripts == 'function')) throw new Error('not compiled for this environment (did you build to HTML and try to run it not on the web, or set ENVIRONMENT to something - like node - and run it someplace else - like on the web?)');
+  if (!(typeof window == 'object' || typeof WorkerGlobalScope != 'undefined')) throw new Error('not compiled for this environment (did you build to HTML and try to run it not on the web, or set ENVIRONMENT to something - like node - and run it someplace else - like on the web?)');
 
   {
 // include: web_or_worker_shell_read.js
@@ -328,10 +328,11 @@ var __ATPOSTRUN__ = []; // functions called after the main() is called
 var runtimeInitialized = false;
 
 function preRun() {
-  var preRuns = Module['preRun'];
-  if (preRuns) {
-    if (typeof preRuns == 'function') preRuns = [preRuns];
-    preRuns.forEach(addOnPreRun);
+  if (Module['preRun']) {
+    if (typeof Module['preRun'] == 'function') Module['preRun'] = [Module['preRun']];
+    while (Module['preRun'].length) {
+      addOnPreRun(Module['preRun'].shift());
+    }
   }
   callRuntimeCallbacks(__ATPRERUN__);
 }
@@ -360,10 +361,11 @@ function preMain() {
 function postRun() {
   checkStackCookie();
 
-  var postRuns = Module['postRun'];
-  if (postRuns) {
-    if (typeof postRuns == 'function') postRuns = [postRuns];
-    postRuns.forEach(addOnPostRun);
+  if (Module['postRun']) {
+    if (typeof Module['postRun'] == 'function') Module['postRun'] = [Module['postRun']];
+    while (Module['postRun'].length) {
+      addOnPostRun(Module['postRun'].shift());
+    }
   }
 
   callRuntimeCallbacks(__ATPOSTRUN__);
@@ -837,16 +839,19 @@ function dbg(...args) {
 // end include: preamble.js
 
 
-  /** @constructor */
-  function ExitStatus(status) {
-      this.name = 'ExitStatus';
-      this.message = `Program terminated with exit(${status})`;
-      this.status = status;
+  class ExitStatus {
+      name = 'ExitStatus';
+      constructor(status) {
+        this.message = `Program terminated with exit(${status})`;
+        this.status = status;
+      }
     }
 
   var callRuntimeCallbacks = (callbacks) => {
-      // Pass the module as the first argument.
-      callbacks.forEach((f) => f(Module));
+      while (callbacks.length > 0) {
+        // Pass the module as the first argument.
+        callbacks.shift()(Module);
+      }
     };
 
   
@@ -1950,6 +1955,7 @@ function dbg(...args) {
   initialized:false,
   ignorePermissions:true,
   ErrnoError:class extends Error {
+        name = 'ErrnoError';
         // We set the `name` property to be able to identify `FS.ErrnoError`
         // - the `name` is a standard ECMA-262 property of error objects. Kind of good to have it anyway.
         // - when using PROXYFS, an error can come from an underlying FS
@@ -1958,9 +1964,6 @@ function dbg(...args) {
         // we'll use the reliable test `err.name == "ErrnoError"` instead
         constructor(errno) {
           super(runtimeInitialized ? strError(errno) : '');
-          // TODO(sbc): Use the inline member declaration syntax once we
-          // support it in acorn and closure.
-          this.name = 'ErrnoError';
           this.errno = errno;
           for (var key in ERRNO_CODES) {
             if (ERRNO_CODES[key] === errno) {
@@ -1977,11 +1980,7 @@ function dbg(...args) {
   readFiles:{
   },
   FSStream:class {
-        constructor() {
-          // TODO(https://github.com/emscripten-core/emscripten/issues/21414):
-          // Use inline field declarations.
-          this.shared = {};
-        }
+        shared = {};
         get object() {
           return this.node;
         }
@@ -2011,21 +2010,21 @@ function dbg(...args) {
         }
       },
   FSNode:class {
+        node_ops = {};
+        stream_ops = {};
+        readMode = 292 | 73;
+        writeMode = 146;
+        mounted = null;
         constructor(parent, name, mode, rdev) {
           if (!parent) {
             parent = this;  // root node sets parent to itself
           }
           this.parent = parent;
           this.mount = parent.mount;
-          this.mounted = null;
           this.id = FS.nextInode++;
           this.name = name;
           this.mode = mode;
-          this.node_ops = {};
-          this.stream_ops = {};
           this.rdev = rdev;
-          this.readMode = 292 | 73;
-          this.writeMode = 146;
         }
         get read() {
           return (this.mode & this.readMode) === this.readMode;
@@ -3363,10 +3362,8 @@ function dbg(...args) {
         // Lazy chunked Uint8Array (implements get and length from Uint8Array).
         // Actual getting is abstracted away for eventual reuse.
         class LazyUint8Array {
-          constructor() {
-            this.lengthKnown = false;
-            this.chunks = []; // Loaded chunks. Index is the chunk number
-          }
+          lengthKnown = false;
+          chunks = []; // Loaded chunks. Index is the chunk number
           get(idx) {
             if (idx > this.length-1 || idx < 0) {
               return undefined;
@@ -3673,13 +3670,13 @@ function dbg(...args) {
   }
 
   /** @suppress {duplicate } */
-  function syscallGetVarargI() {
+  var syscallGetVarargI = () => {
       assert(SYSCALLS.varargs != undefined);
       // the `+` prepended here is necessary to convince the JSCompiler that varargs is indeed a number.
       var ret = HEAP32[((+SYSCALLS.varargs)>>2)];
       SYSCALLS.varargs += 4;
       return ret;
-    }
+    };
   var syscallGetVarargP = syscallGetVarargI;
   
   
@@ -4393,11 +4390,6 @@ function dbg(...args) {
   }
   }
 
-  var _getentropy = (buffer, size) => {
-      randomFill(HEAPU8.subarray(buffer, buffer + size));
-      return 0;
-    };
-
   
   var adapters_support = function() {
       // @ts-ignore
@@ -4508,6 +4500,17 @@ function dbg(...args) {
   function _ipppppip_async(...args) { return adapters_support(true, ...args) }
   _ipppppip_async.isAsync = true;
 
+  function _random_get(buffer, size) {
+  try {
+  
+      randomFill(HEAPU8.subarray(buffer, buffer + size));
+      return 0;
+    } catch (e) {
+    if (typeof FS == 'undefined' || !(e.name === 'ErrnoError')) throw e;
+    return e.errno;
+  }
+  }
+
   function _vppippii(...args) { return adapters_support(false, ...args) }
 
   function _vppippii_async(...args) { return adapters_support(true, ...args) }
@@ -4534,6 +4537,7 @@ function dbg(...args) {
       }
       quit_(code, new ExitStatus(code));
     };
+  
   
   /** @param {boolean|number=} implicit */
   var exitJS = (status, implicit) => {
@@ -5405,8 +5409,6 @@ var wasmImports = {
   /** @export */
   fd_write: _fd_write,
   /** @export */
-  getentropy: _getentropy,
-  /** @export */
   ipp: _ipp,
   /** @export */
   ipp_async: _ipp_async,
@@ -5458,6 +5460,8 @@ var wasmImports = {
   ipppppip: _ipppppip,
   /** @export */
   ipppppip_async: _ipppppip_async,
+  /** @export */
+  random_get: _random_get,
   /** @export */
   vppippii: _vppippii,
   /** @export */
@@ -5726,7 +5730,6 @@ var _sqlite3_db_readonly = Module['_sqlite3_db_readonly'] = createExportWrapper(
 var _sqlite3_compileoption_used = Module['_sqlite3_compileoption_used'] = createExportWrapper('sqlite3_compileoption_used', 1);
 var _sqlite3_compileoption_get = Module['_sqlite3_compileoption_get'] = createExportWrapper('sqlite3_compileoption_get', 1);
 var _sqlite3_sourceid = Module['_sqlite3_sourceid'] = createExportWrapper('sqlite3_sourceid', 0);
-var _sqlite3mc_vfs_create = Module['_sqlite3mc_vfs_create'] = createExportWrapper('sqlite3mc_vfs_create', 2);
 var _strerror = createExportWrapper('strerror', 1);
 var _memcmp = Module['_memcmp'] = createExportWrapper('memcmp', 3);
 var _malloc = Module['_malloc'] = createExportWrapper('malloc', 1);
@@ -5998,8 +6001,6 @@ var unexportedSymbols = [
   'DNS',
   'Protocols',
   'Sockets',
-  'initRandomFill',
-  'randomFill',
   'timers',
   'warnOnce',
   'readEmAsmArgsArray',
@@ -6044,6 +6045,8 @@ var unexportedSymbols = [
   'getEnvStrings',
   'doReadv',
   'doWritev',
+  'initRandomFill',
+  'randomFill',
   'promiseMap',
   'uncaughtExceptionCount',
   'exceptionLast',
@@ -6099,7 +6102,6 @@ unexportedSymbols.forEach(unexportedRuntimeSymbol);
 
 
 var calledRun;
-var calledPrerun;
 
 dependenciesFulfilled = function runCaller() {
   // If run has never been called, and we should call run (INVOKE_RUN is true, and Module.noInitialRun is not false)
@@ -6109,7 +6111,7 @@ dependenciesFulfilled = function runCaller() {
 
 function callMain() {
   assert(runDependencies == 0, 'cannot call main when async dependencies remain! (listen on Module["onRuntimeInitialized"])');
-  assert(calledPrerun, 'cannot call main without calling preRun first');
+  assert(__ATPRERUN__.length == 0, 'cannot call main when preRun functions remain to be called');
 
   var entryFunction = _main;
 
@@ -6146,22 +6148,19 @@ function run() {
 
   stackCheckInit();
 
-  if (!calledPrerun) {
-    calledPrerun = 1;
-    preRun();
+  preRun();
 
-    // a preRun added a dependency, run will be called later
-    if (runDependencies > 0) {
-      return;
-    }
+  // a preRun added a dependency, run will be called later
+  if (runDependencies > 0) {
+    return;
   }
 
   function doRun() {
     // run may have just been called through dependencies being fulfilled just in this very frame,
     // or while the async setStatus time below was happening
     if (calledRun) return;
-    calledRun = 1;
-    Module['calledRun'] = 1;
+    calledRun = true;
+    Module['calledRun'] = true;
 
     if (ABORT) return;
 
@@ -6245,7 +6244,7 @@ run();
 
 // end include: postamble.js
 
-// include: /Users/stevenontong/Documents/platform_code/powersync/wa-sqlite/src/libauthorizer.js
+// include: /Users/mugheeskhan/Documents/JourneyApps/Repositories/wa-sqlite/src/libauthorizer.js
 // Copyright 2024 Roy T. Hashimoto. All Rights Reserved.
 // This file should be included in the build with --post-js.
 
@@ -6275,9 +6274,9 @@ run();
     }
     return result;
   };
-})();// end include: /Users/stevenontong/Documents/platform_code/powersync/wa-sqlite/src/libauthorizer.js
+})();// end include: /Users/mugheeskhan/Documents/JourneyApps/Repositories/wa-sqlite/src/libauthorizer.js
 
-// include: /Users/stevenontong/Documents/platform_code/powersync/wa-sqlite/src/libfunction.js
+// include: /Users/mugheeskhan/Documents/JourneyApps/Repositories/wa-sqlite/src/libfunction.js
 // Copyright 2024 Roy T. Hashimoto. All Rights Reserved.
 // This file should be included in the build with --post-js.
 
@@ -6332,9 +6331,9 @@ run();
     }
     return result;
   };
-})();// end include: /Users/stevenontong/Documents/platform_code/powersync/wa-sqlite/src/libfunction.js
+})();// end include: /Users/mugheeskhan/Documents/JourneyApps/Repositories/wa-sqlite/src/libfunction.js
 
-// include: /Users/stevenontong/Documents/platform_code/powersync/wa-sqlite/src/libhook.js
+// include: /Users/mugheeskhan/Documents/JourneyApps/Repositories/wa-sqlite/src/libhook.js
 // Copyright 2024 Roy T. Hashimoto. All Rights Reserved.
 // This file should be included in the build with --post-js.
 
@@ -6391,9 +6390,9 @@ run();
     }
   };
 })();
-// end include: /Users/stevenontong/Documents/platform_code/powersync/wa-sqlite/src/libhook.js
+// end include: /Users/mugheeskhan/Documents/JourneyApps/Repositories/wa-sqlite/src/libhook.js
 
-// include: /Users/stevenontong/Documents/platform_code/powersync/wa-sqlite/src/libprogress.js
+// include: /Users/mugheeskhan/Documents/JourneyApps/Repositories/wa-sqlite/src/libprogress.js
 // Copyright 2024 Roy T. Hashimoto. All Rights Reserved.
 // This file should be included in the build with --post-js.
 
@@ -6420,9 +6419,9 @@ run();
       Module['setCallback'](pAsyncFlags, _ => xProgress(pApp));
     }
   };
-})();// end include: /Users/stevenontong/Documents/platform_code/powersync/wa-sqlite/src/libprogress.js
+})();// end include: /Users/mugheeskhan/Documents/JourneyApps/Repositories/wa-sqlite/src/libprogress.js
 
-// include: /Users/stevenontong/Documents/platform_code/powersync/wa-sqlite/src/libvfs.js
+// include: /Users/mugheeskhan/Documents/JourneyApps/Repositories/wa-sqlite/src/libvfs.js
 // Copyright 2024 Roy T. Hashimoto. All Rights Reserved.
 // This file should be included in the build with --post-js.
 
@@ -6501,7 +6500,7 @@ run();
       Module['_sqlite3_free'](vfsReturn);
     }
   };
-})();// end include: /Users/stevenontong/Documents/platform_code/powersync/wa-sqlite/src/libvfs.js
+})();// end include: /Users/mugheeskhan/Documents/JourneyApps/Repositories/wa-sqlite/src/libvfs.js
 
 // include: postamble_modularize.js
 // In MODULARIZE mode we wrap the generated code in a factory function

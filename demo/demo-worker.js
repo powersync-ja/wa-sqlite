@@ -4,8 +4,11 @@ import * as SQLite from '../src/sqlite-api.js';
 
 const BUILDS = new Map([
   ['default', '../dist/wa-sqlite.mjs'],
+  ['mc-default', '../dist/mc-wa-sqlite.mjs'],
   ['asyncify', '../dist/wa-sqlite-async.mjs'],
+  ['mc-asyncify', '../dist/mc-wa-sqlite-async.mjs'],
   ['jspi', '../dist/wa-sqlite-jspi.mjs'],
+  ['mc-jspi', '../dist/mcwa-sqlite-jspi.mjs'],
   // ['default', '../debug/wa-sqlite.mjs'],
   // ['asyncify', '../debug/wa-sqlite-async.mjs'],
   // ['jspi', '../debug/wa-sqlite-jspi.mjs'],
@@ -91,6 +94,8 @@ maybeReset()
 
     const dbName = searchParams.get('dbName') ?? 'hello';
     const vfsName = searchParams.get('vfsName') ?? config.vfsName ?? 'demo';
+    //Add this to the URL to enable using the multiple cipher VFS
+    const useMultiCipher = searchParams.has('multiCipher');
 
     // Instantiate SQLite.
     const { default: moduleFactory } = await import(BUILDS.get(buildName));
@@ -128,20 +133,10 @@ maybeReset()
       sqlite3.vfs_register(vfs, true);
     }
 
-    function createUTF8(s) {
-      if (typeof s !== 'string') return 0;
-      const utf8 = new TextEncoder().encode(s);
-      const zts = module._sqlite3_malloc(utf8.byteLength + 1);
-      module.HEAPU8.set(utf8, zts);
-      module.HEAPU8[zts + utf8.byteLength] = 0;
-      return zts;
+    if(useMultiCipher) {
+      const createResult = module.ccall('sqlite3mc_vfs_create', 'int', ['string', 'int'], [vfsName, 1]);
+      console.log('result from creation', createResult);
     }
-
-    const zName = 'demo';
-    // const zName = createUTF8('demo');
-    const createResult = module.ccall('sqlite3mc_vfs_create', 'int', ['string', 'int'], [zName, 1]);
-    console.log('result from creation', createResult);
-
 
     // Open the database.
     const db = await sqlite3.open_v2(dbName);
