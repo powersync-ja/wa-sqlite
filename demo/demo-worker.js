@@ -11,12 +11,12 @@ const BUILDS = new Map([
   // ['jspi', '../debug/wa-sqlite-jspi.mjs'],
   // Dynamic builds
   ['default-dynamic', '../dist/wa-sqlite-dynamic-main.mjs'],
-  ['asyncify-dynamic', '../dist/wa-sqlite-async-dynamic-main.mjs'],
+  ['asyncify-dynamic', '../dist/wa-sqlite-async-dynamic-main.mjs']
 ]);
 
 const EXT_WASM = new Map([
   ['default-dynamic', 'libpowersync.wasm'],
-  ['asyncify-dynamic', 'libpowersync-async.wasm'],
+  ['asyncify-dynamic', 'libpowersync-async.wasm']
 ]);
 
 /**
@@ -28,192 +28,214 @@ const EXT_WASM = new Map([
  * @property {object} [vfsOptions] VFS constructor arguments
  */
 
-/** @type {Map<string, Config>} */ const VFS_CONFIGS = new Map([
-  {
-    name: 'default',
-    vfsModule: null
-  },
-  {
-    name: 'MemoryVFS',
-    vfsModule: '../src/examples/MemoryVFS.js',
-  },
-  {
-    name: 'MemoryAsyncVFS',
-    vfsModule: '../src/examples/MemoryAsyncVFS.js',
-  },
-  {
-    name: 'IDBBatchAtomicVFS',
-    vfsModule: '../src/examples/IDBBatchAtomicVFS.js',
-    vfsOptions: { lockPolicy: 'shared+hint' }
-  },
-  {
-    name: 'IDBMirrorVFS',
-    vfsModule: '../src/examples/IDBMirrorVFS.js',
-    vfsName: 'demo-mirror'
-  },
-  {
-    name: 'OPFSAdaptiveVFS',
-    vfsModule: '../src/examples/OPFSAdaptiveVFS.js',
-    vfsOptions: { lockPolicy: 'shared+hint' }
-  },
-  {
-    name: 'OPFSAnyContextVFS',
-    vfsModule: '../src/examples/OPFSAnyContextVFS.js',
-    vfsOptions: { lockPolicy: 'shared+hint' }
-  },
-  {
-    name: 'OPFSCoopSyncVFS',
-    vfsModule: '../src/examples/OPFSCoopSyncVFS.js',
-  },
-  {
-    name: 'OPFSPermutedVFS',
-    vfsModule: '../src/examples/OPFSPermutedVFS.js',
-  },
-  {
-    name: 'AccessHandlePoolVFS',
-    vfsModule: '../src/examples/AccessHandlePoolVFS.js',
-  },
-  {
-    name: 'FLOOR',
-    vfsModule: '../src/examples/FLOOR.js',
-  },
-].map(config => [config.name, config]));
+/** @type {Map<string, Config>} */ const VFS_CONFIGS = new Map(
+  [
+    {
+      name: 'default',
+      vfsModule: null
+    },
+    {
+      name: 'MemoryVFS',
+      vfsModule: '../src/examples/MemoryVFS.js'
+    },
+    {
+      name: 'MemoryAsyncVFS',
+      vfsModule: '../src/examples/MemoryAsyncVFS.js'
+    },
+    {
+      name: 'IDBBatchAtomicVFS',
+      vfsModule: '../src/examples/IDBBatchAtomicVFS.js',
+      vfsOptions: { lockPolicy: 'shared+hint' }
+    },
+    {
+      name: 'IDBMirrorVFS',
+      vfsModule: '../src/examples/IDBMirrorVFS.js',
+      vfsName: 'demo-mirror'
+    },
+    {
+      name: 'OPFSAdaptiveVFS',
+      vfsModule: '../src/examples/OPFSAdaptiveVFS.js',
+      vfsOptions: { lockPolicy: 'shared+hint' }
+    },
+    {
+      name: 'OPFSAnyContextVFS',
+      vfsModule: '../src/examples/OPFSAnyContextVFS.js',
+      vfsOptions: { lockPolicy: 'shared+hint' }
+    },
+    {
+      name: 'OPFSCoopSyncVFS',
+      vfsModule: '../src/examples/OPFSCoopSyncVFS.js'
+    },
+    {
+      name: 'OPFSPermutedVFS',
+      vfsModule: '../src/examples/OPFSPermutedVFS.js'
+    },
+    {
+      name: 'AccessHandlePoolVFS',
+      vfsModule: '../src/examples/AccessHandlePoolVFS.js'
+    },
+    {
+      name: 'FLOOR',
+      vfsModule: '../src/examples/FLOOR.js'
+    }
+  ].map((config) => [config.name, config])
+);
 
 const searchParams = new URLSearchParams(location.search);
 
-maybeReset().then(async () => {
-  const buildName = searchParams.get('build') || BUILDS.keys().next().value;
-  const configName = searchParams.get('config') || VFS_CONFIGS.keys().next().value;
-  const config = VFS_CONFIGS.get(configName);
+maybeReset()
+  .then(async () => {
+    const buildName = searchParams.get('build') || BUILDS.keys().next().value;
+    const configName = searchParams.get('config') || VFS_CONFIGS.keys().next().value;
+    const config = VFS_CONFIGS.get(configName);
 
-  const dbName = searchParams.get('dbName') ?? 'hello';
-  const vfsName = searchParams.get('vfsName') ?? config.vfsName ?? 'demo';
+    const dbName = searchParams.get('dbName') ?? 'hello';
+    const vfsName = searchParams.get('vfsName') ?? config.vfsName ?? 'demo';
 
-  // Instantiate SQLite.
-  const { default: moduleFactory } = await import(BUILDS.get(buildName));
-  const module = await moduleFactory({
-    // locateFile(path) {
-    //   // (OPTIONAL) locateFile can be specified to change WASM module resolution.
-    //   // The returned url is passed to fetch, and can be a relative path
-    //   // or absolute URL.
-    //   // This applies to both the main wasm file, and the extension.
-    //   return `../dist/${path}`;
-    // },
-  });
+    // Instantiate SQLite.
+    const { default: moduleFactory } = await import(BUILDS.get(buildName));
+    const module = await moduleFactory({
+      // locateFile(path) {
+      //   // (OPTIONAL) locateFile can be specified to change WASM module resolution.
+      //   // The returned url is passed to fetch, and can be a relative path
+      //   // or absolute URL.
+      //   // This applies to both the main wasm file, and the extension.
+      //   return `../dist/${path}`;
+      // },
+    });
 
-  const sqlite3 = SQLite.Factory(module);
+    const sqlite3 = SQLite.Factory(module);
+
+    if (buildName.endsWith('-dynamic')) {
+      const extWasm = EXT_WASM.get(buildName);
+      // Load the extension library into this scope
+      let extScope = {};
+      await module.loadDynamicLibrary(extWasm, { loadAsync: true }, extScope);
+
+      // This calls sqlite3_auto_extension(sqlite3_powersync_init).
+      // For generic extensions, we'd need to call sqlite3_auto_extension directly.
+      extScope.powersync_init_static();
+    } else {
+      // This is not part of the Sqlite3 API
+      module.ccall('powersync_init_static', 'int', []);
+    }
+
+    if (config.vfsModule) {
+      // Create the VFS and register it as the default file system.
+      const namespace = await import(config.vfsModule);
+      const className = config.vfsClassName ?? config.vfsModule.match(/([^/]+)\.js$/)[1];
+      const vfs = await namespace[className].create(vfsName, module, config.vfsOptions);
+      sqlite3.vfs_register(vfs, true);
+    }
+
+    function createUTF8(s) {
+      if (typeof s !== 'string') return 0;
+      const utf8 = new TextEncoder().encode(s);
+      const zts = module._sqlite3_malloc(utf8.byteLength + 1);
+      module.HEAPU8.set(utf8, zts);
+      module.HEAPU8[zts + utf8.byteLength] = 0;
+      return zts;
+    }
+
+    const zName = 'demo';
+    // const zName = createUTF8('demo');
+    const createResult = module.ccall('sqlite3mc_vfs_create', 'int', ['string', 'int'], [zName, 1]);
+    console.log('result from creation', createResult);
 
 
-  if (buildName.endsWith('-dynamic')) {
-    const extWasm = EXT_WASM.get(buildName);
-    // Load the extension library into this scope
-    let extScope = {};
-    await module.loadDynamicLibrary(
-      extWasm,
-      { loadAsync: true },
-      extScope
+    // Open the database.
+    const db = await sqlite3.open_v2(dbName);
+
+    // Add example functions regex and regex_replace.
+    sqlite3.create_function(
+      db,
+      'regexp',
+      2,
+      SQLite.SQLITE_UTF8 | SQLite.SQLITE_DETERMINISTIC,
+      0,
+      function (context, values) {
+        const pattern = new RegExp(sqlite3.value_text(values[0]));
+        const s = sqlite3.value_text(values[1]);
+        sqlite3.result(context, pattern.test(s) ? 1 : 0);
+      },
+      null,
+      null
     );
 
-    // This calls sqlite3_auto_extension(sqlite3_powersync_init).
-    // For generic extensions, we'd need to call sqlite3_auto_extension directly.
-    extScope.powersync_init_static();
-  } else {
-    // This is not part of the Sqlite3 API
-    module.ccall('powersync_init_static', 'int', []);
-  }
-
-  if (config.vfsModule) {
-    // Create the VFS and register it as the default file system.
-    const namespace = await import(config.vfsModule);
-    const className = config.vfsClassName ?? config.vfsModule.match(/([^/]+)\.js$/)[1];
-    const vfs = await namespace[className].create(vfsName, module, config.vfsOptions);
-    sqlite3.vfs_register(vfs, true);
-  }
-
-  // Open the database.
-  const db = await sqlite3.open_v2(dbName);
-
-  // Add example functions regex and regex_replace.
-  sqlite3.create_function(
-    db,
-    'regexp', 2,
-    SQLite.SQLITE_UTF8 | SQLite.SQLITE_DETERMINISTIC, 0,
-    function(context, values) {
-      const pattern = new RegExp(sqlite3.value_text(values[0]))
-      const s = sqlite3.value_text(values[1]);
-      sqlite3.result(context, pattern.test(s) ? 1 : 0);
-    },
-    null, null);
-
-  sqlite3.create_function(
-    db,
-    'regexp_replace', -1,
-    SQLite.SQLITE_UTF8 | SQLite.SQLITE_DETERMINISTIC, 0,
-    function(context, values) {
-      // Arguments are
-      // (pattern, s, replacement) or
-      // (pattern, s, replacement, flags).
-      if (values.length < 3) {
-        sqlite3.result(context, '');
-        return;  
-      }
-      const pattern = sqlite3.value_text(values[0]);
-      const s = sqlite3.value_text(values[1]);
-      const replacement = sqlite3.value_text(values[2]);
-      const flags = values.length > 3 ? sqlite3.value_text(values[3]) : '';
-      sqlite3.result(context, s.replace(new RegExp(pattern, flags), replacement));
-    },
-    null, null);
-
-  // Handle SQL queries.
-  addEventListener('message', async (event) => {
-    try {
-      const query = event.data;
-
-      const start = performance.now();
-      const results = [];
-      for await (const stmt of sqlite3.statements(db, query)) {
-        const rows = [];
-        while (await sqlite3.step(stmt) === SQLite.SQLITE_ROW) {
-          const row = sqlite3.row(stmt);
-          rows.push(row);
+    sqlite3.create_function(
+      db,
+      'regexp_replace',
+      -1,
+      SQLite.SQLITE_UTF8 | SQLite.SQLITE_DETERMINISTIC,
+      0,
+      function (context, values) {
+        // Arguments are
+        // (pattern, s, replacement) or
+        // (pattern, s, replacement, flags).
+        if (values.length < 3) {
+          sqlite3.result(context, '');
+          return;
         }
-  
-        const columns = sqlite3.column_names(stmt)
-        if (columns.length) {
-          results.push({ columns, rows });
-        }
-      }
-      const end = performance.now();
+        const pattern = sqlite3.value_text(values[0]);
+        const s = sqlite3.value_text(values[1]);
+        const replacement = sqlite3.value_text(values[2]);
+        const flags = values.length > 3 ? sqlite3.value_text(values[3]) : '';
+        sqlite3.result(context, s.replace(new RegExp(pattern, flags), replacement));
+      },
+      null,
+      null
+    );
 
-      postMessage({
-        results,
-        elapsed: Math.trunc(end - start) / 1000
-      })
-    } catch (e) {
-      console.error(e);
-      postMessage({ error: cvtErrorToCloneable(e) });
-    }
+    // Handle SQL queries.
+    addEventListener('message', async (event) => {
+      try {
+        const query = event.data;
+
+        const start = performance.now();
+        const results = [];
+        for await (const stmt of sqlite3.statements(db, query)) {
+          const rows = [];
+          while ((await sqlite3.step(stmt)) === SQLite.SQLITE_ROW) {
+            const row = sqlite3.row(stmt);
+            rows.push(row);
+          }
+
+          const columns = sqlite3.column_names(stmt);
+          if (columns.length) {
+            results.push({ columns, rows });
+          }
+        }
+        const end = performance.now();
+
+        postMessage({
+          results,
+          elapsed: Math.trunc(end - start) / 1000
+        });
+      } catch (e) {
+        console.error(e);
+        postMessage({ error: cvtErrorToCloneable(e) });
+      }
+    });
+
+    // Signal that we're ready.
+    postMessage(null);
+  })
+  .catch((e) => {
+    console.error(e);
+    postMessage({ error: cvtErrorToCloneable(e) });
   });
-
-  // Signal that we're ready.
-  postMessage(null);
-}).catch(e => {
-  console.error(e);
-  postMessage({ error: cvtErrorToCloneable(e) });
-});
 
 async function maybeReset() {
   if (searchParams.has('reset')) {
-    const outerLockReleaser = await new Promise(resolve => {
-      navigator.locks.request('demo-worker-outer', lock => {
-        return new Promise(release => {
+    const outerLockReleaser = await new Promise((resolve) => {
+      navigator.locks.request('demo-worker-outer', (lock) => {
+        return new Promise((release) => {
           resolve(release);
         });
       });
     });
 
-    await navigator.locks.request('demo-worker-inner', { ifAvailable: true }, async lock => {
+    await navigator.locks.request('demo-worker-inner', { ifAvailable: true }, async (lock) => {
       if (lock) {
         console.log('clearing OPFS and IndexedDB');
         const root = await navigator.storage?.getDirectory();
@@ -223,26 +245,28 @@ async function maybeReset() {
             await root.removeEntry(name, { recursive: true });
           }
         }
-    
+
         // Clear IndexedDB.
-        const dbList = indexedDB.databases ?
-          await indexedDB.databases() :
-          ['demo', 'demo-floor'].map(name => ({ name }));
-        await Promise.all(dbList.map(({name}) => {
-          return new Promise((resolve, reject) => {
-            const request = indexedDB.deleteDatabase(name);
-            request.onsuccess = resolve;
-            request.onerror = reject;
-          });
-        }));
+        const dbList = indexedDB.databases
+          ? await indexedDB.databases()
+          : ['demo', 'demo-floor'].map((name) => ({ name }));
+        await Promise.all(
+          dbList.map(({ name }) => {
+            return new Promise((resolve, reject) => {
+              const request = indexedDB.deleteDatabase(name);
+              request.onsuccess = resolve;
+              request.onerror = reject;
+            });
+          })
+        );
       } else {
         console.warn('reset skipped because another instance already holds the lock');
       }
     });
-    
+
     await new Promise((resolve, reject) => {
       const mode = searchParams.has('exclusive') ? 'exclusive' : 'shared';
-      navigator.locks.request('demo-worker-inner', { mode, ifAvailable: true }, lock => {
+      navigator.locks.request('demo-worker-inner', { mode, ifAvailable: true }, (lock) => {
         if (lock) {
           resolve();
           return new Promise(() => {});
@@ -259,11 +283,11 @@ async function maybeReset() {
 function cvtErrorToCloneable(e) {
   if (e instanceof Error) {
     const props = new Set([
-      ...['name', 'message', 'stack'].filter(k => e[k] !== undefined),
+      ...['name', 'message', 'stack'].filter((k) => e[k] !== undefined),
       ...Object.getOwnPropertyNames(e)
     ]);
-    return Object.fromEntries(Array.from(props, k =>  [k, e[k]])
-      .filter(([_, v]) => {
+    return Object.fromEntries(
+      Array.from(props, (k) => [k, e[k]]).filter(([_, v]) => {
         // Skip any non-cloneable properties.
         try {
           structuredClone(v);
@@ -271,7 +295,8 @@ function cvtErrorToCloneable(e) {
         } catch (e) {
           return false;
         }
-      }));
+      })
+    );
   }
   return e;
 }
