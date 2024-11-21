@@ -94,8 +94,6 @@ maybeReset()
 
     const dbName = searchParams.get('dbName') ?? 'hello';
     const vfsName = searchParams.get('vfsName') ?? config.vfsName ?? 'demo';
-    //Add this to the URL to enable using the multiple cipher VFS
-    const useMultiCipher = searchParams.has('multiCipher');
 
     // Instantiate SQLite.
     const { default: moduleFactory } = await import(BUILDS.get(buildName));
@@ -133,7 +131,7 @@ maybeReset()
       sqlite3.vfs_register(vfs, true);
     }
 
-    if(useMultiCipher) {
+    if(buildName.startsWith('mc-')) {
       const createResult = module.ccall('sqlite3mc_vfs_create', 'int', ['string', 'int'], [vfsName, 1]);
       console.log('result from creation', createResult);
     }

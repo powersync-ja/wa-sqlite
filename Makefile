@@ -23,6 +23,17 @@ CFILES = \
 
 POWERSYNC_CFILES = $(notdir $(wildcard powersync-static/*.c))
 
+MC_CFILES = \
+	sqlite3mc_amalgamation.c \
+	extension-functions.c \
+	main.c \
+	libauthorizer.c \
+	libfunction.c \
+	libhook.c \
+	libprogress.c \
+	libvfs.c \
+	$(CFILES_EXTRA)
+
 JSFILES = \
 	src/libauthorizer.js \
 	src/libfunction.js \
@@ -54,6 +65,9 @@ OBJ_FILES_DIST = $(patsubst %.c,tmp/obj/dist/%.o,$(CFILES))
 POWERSYNC_OBJ_FILES_DEBUG = $(patsubst %.c,tmp/powersync-obj/debug/%.o,$(POWERSYNC_CFILES))
 POWERSYNC_OBJ_FILES_DIST = $(patsubst %.c,tmp/powersync-obj/dist/%.o,$(POWERSYNC_CFILES))
 POWERSYNC_STATIC_FILES = powersync-libs/libpowersync-wasm.a
+
+MC_OBJ_FILES_DEBUG = $(patsubst %.c,tmp/mc-obj/debug/%.o,$(MC_CFILES))
+MC_OBJ_FILES_DIST = $(patsubst %.c,tmp/mc-obj/dist/%.o,$(MC_CFILES))
 
 # build options
 EMCC ?= emcc
@@ -190,18 +204,13 @@ deps/$(SQLITE_VERSION)/sqlite3.h deps/$(SQLITE_VERSION)/sqlite3.c:
 	curl -LsS $(SQLITE_TARBALL_URL) | tar -xzf - -C cache/$(SQLITE_VERSION)/ --strip-components=1
 	mkdir -p deps/$(SQLITE_VERSION)
 	(cd deps/$(SQLITE_VERSION); ../../cache/$(SQLITE_VERSION)/configure --enable-all && make sqlite3.c)
-	mkdir -p cache/sqlite3mc-$(MC_SQLITE_VERSION)
-	curl -LsS $(MC_SQLITE_URL) -o cache/sqlite3mc-$(MC_SQLITE_VERSION)/sqlite3mc.zip
-	unzip -o cache/sqlite3mc-$(MC_SQLITE_VERSION)/sqlite3mc.zip -d cache/sqlite3mc-$(MC_SQLITE_VERSION)
-	rm -rf cache/sqlite3mc-$(MC_SQLITE_VERSION)/sqlite3mc.zip
-	cp cache/sqlite3mc-$(MC_SQLITE_VERSION)/sqlite3mc_amalgamation.c deps/$(SQLITE_VERSION)/sqlite3.c
 
-deps/sqlite3mc_amalgamation.c:
+deps/$(SQLITE_VERSION)/sqlite3mc_amalgamation.c:
 	mkdir -p cache/sqlite3mc-$(MC_SQLITE_VERSION)
 	curl -LsS $(MC_SQLITE_URL) -o cache/sqlite3mc-$(MC_SQLITE_VERSION)/sqlite3mc.zip
 	unzip -o cache/sqlite3mc-$(MC_SQLITE_VERSION)/sqlite3mc.zip -d cache/sqlite3mc-$(MC_SQLITE_VERSION)
 	rm -rf cache/sqlite3mc-$(MC_SQLITE_VERSION)/sqlite3mc.zip
-	cp cache/sqlite3mc-$(MC_SQLITE_VERSION)/sqlite3mc_amalgamation.c deps/$(SQLITE_VERSION)/sqlite3.c
+	cp cache/sqlite3mc-$(MC_SQLITE_VERSION)/sqlite3mc_amalgamation.c deps/$(SQLITE_VERSION)/sqlite3mc_amalgamation.c
 
 # Download static files from PowerSync Core repository
 $(POWERSYNC_STATIC_FILES):
@@ -267,6 +276,16 @@ tmp/powersync-obj/dist/%.o: %.c
 	mkdir -p tmp/powersync-obj/dist
 	$(EMCC) $(CFLAGS_DIST) $(WASQLITE_DEFINES) $^ -c -o $@
 
+# Build multiple ciphers
+tmp/mc-obj/debug/%.o: %.c
+	mkdir -p tmp/mc-obj/debug
+	$(EMCC) $(CFLAGS_DEBUG) $(WASQLITE_DEFINES) $^ -c -o $@
+
+# Build multiple ciphers
+tmp/mc-obj/dist/%.o: %.c
+	mkdir -p tmp/mc-obj/dist
+	$(EMCC) $(CFLAGS_DIST) $(WASQLITE_DEFINES) $^ -c -o $@
+
 
 ## debug
 .PHONY: clean-debug
@@ -274,7 +293,7 @@ clean-debug:
 	rm -rf debug
 
 .PHONY: debug
-debug: debug/wa-sqlite.mjs debug/wa-sqlite-async.mjs debug/wa-sqlite-jspi.mjs debug/wa-sqlite-dynamic-main.mjs debug/wa-sqlite-dynamic-main-async.mjs
+debug: debug/wa-sqlite.mjs debug/wa-sqlite-async.mjs debug/wa-sqlite-jspi.mjs debug/wa-sqlite-dynamic-main.mjs debug/wa-sqlite-dynamic-main-async.mjs debug/mc-wa-sqlite.mjs debug/mc-wa-sqlite-async.mjs debug/mc-wa-sqlite-jspi.mjs
 
 # Statically links PowerSync Core
 debug/wa-sqlite.mjs: $(OBJ_FILES_DEBUG) $(POWERSYNC_OBJ_FILES_DEBUG) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS) $(POWERSYNC_STATIC_FILES) $(COMBINED_EXPORTED_FUNCTIONS)
@@ -287,7 +306,7 @@ debug/wa-sqlite.mjs: $(OBJ_FILES_DEBUG) $(POWERSYNC_OBJ_FILES_DEBUG) $(EXPORTED_
 	  $(POWERSYNC_OBJ_FILES_DEBUG) -o $@
 
 # Statically links PowerSync Core
-debug/wa-sqlite-async.mjs: $(OBJ_FILES_DEBUG) $(POWERSYNC_OBJ_FILES_DEBUG)  $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS) $(ASYNCIFY_IMPORTS) $(POWERSYNC_STATIC_FILES)  $(COMBINED_EXPORTED_FUNCTIONS)
+debug/wa-sqlite-async.mjs: $(OBJ_FILES_DEBUG) $(POWERSYNC_OBJ_FILES_DEBUG) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS) $(ASYNCIFY_IMPORTS) $(POWERSYNC_STATIC_FILES) $(COMBINED_EXPORTED_FUNCTIONS)
 	mkdir -p debug
 	$(EMCC) $(EMFLAGS_DEBUG) \
 	  $(COMBINED_EMFLAGS_INTERFACES) \
@@ -298,7 +317,7 @@ debug/wa-sqlite-async.mjs: $(OBJ_FILES_DEBUG) $(POWERSYNC_OBJ_FILES_DEBUG)  $(EX
 	  $(OBJ_FILES_DEBUG) -o $@
 
 # Statically links PowerSync Core
-debug/wa-sqlite-jspi.mjs: $(OBJ_FILES_DEBUG) $(POWERSYNC_OBJ_FILES_DEBUG) $(JSFILES) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS) $(ASYNCIFY_IMPORTS) $(POWERSYNC_STATIC_FILES)  $(COMBINED_EXPORTED_FUNCTIONS)
+debug/wa-sqlite-jspi.mjs: $(OBJ_FILES_DEBUG) $(POWERSYNC_OBJ_FILES_DEBUG) $(JSFILES) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS) $(ASYNCIFY_IMPORTS) $(POWERSYNC_STATIC_FILES) $(COMBINED_EXPORTED_FUNCTIONS)
 	mkdir -p debug
 	$(EMCC) $(EMFLAGS_DEBUG) $(EMFLAGS_DYNAMIC)  \
 	  $(COMBINED_EMFLAGS_INTERFACES) \
@@ -307,6 +326,38 @@ debug/wa-sqlite-jspi.mjs: $(OBJ_FILES_DEBUG) $(POWERSYNC_OBJ_FILES_DEBUG) $(JSFI
 	  $(POWERSYNC_STATIC_FILES) \
 	  $(POWERSYNC_OBJ_FILES_DEBUG) \
 	  $(OBJ_FILES_DEBUG) -o $@
+
+# Statically links PowerSync Core
+debug/mc-wa-sqlite.mjs: $(MC_OBJ_FILES_DEBUG) $(POWERSYNC_OBJ_FILES_DEBUG) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS) $(POWERSYNC_STATIC_FILES) $(MC_COMBINED_EXPORTED_FUNCTIONS)
+	mkdir -p debug
+	$(EMCC) $(EMFLAGS_DEBUG) \
+	  $(COMBINED_EMFLAGS_INTERFACES) \
+	  $(EMFLAGS_LIBRARIES) \
+	  $(POWERSYNC_STATIC_FILES) \
+	  $(OBJ_FILES_DEBUG) \
+	  $(MC_OBJ_FILES_DEBUG) -o $@
+
+# Statically links PowerSync Core
+debug/mc-wa-sqlite-async.mjs: $(MC_OBJ_FILES_DEBUG) $(POWERSYNC_OBJ_FILES_DEBUG)  $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS) $(ASYNCIFY_IMPORTS) $(POWERSYNC_STATIC_FILES) $(MC_COMBINED_EXPORTED_FUNCTIONS)
+	mkdir -p debug
+	$(EMCC) $(EMFLAGS_DEBUG) \
+	  $(COMBINED_EMFLAGS_INTERFACES) \
+	  $(EMFLAGS_LIBRARIES) \
+	  $(EMFLAGS_ASYNCIFY_DEBUG) \
+	  $(POWERSYNC_STATIC_FILES) \
+	  $(POWERSYNC_OBJ_FILES_DEBUG) \
+	  $(MC_OBJ_FILES_DEBUG) -o $@
+
+# Statically links PowerSync Core
+debug/mc-wa-sqlite-jspi.mjs: $(MC_OBJ_FILES_DEBUG) $(POWERSYNC_OBJ_FILES_DEBUG) $(JSFILES) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS) $(ASYNCIFY_IMPORTS) $(POWERSYNC_STATIC_FILES) $(MC_COMBINED_EXPORTED_FUNCTIONS)
+	mkdir -p debug
+	$(EMCC) $(EMFLAGS_DEBUG) $(EMFLAGS_DYNAMIC)  \
+	  $(COMBINED_EMFLAGS_INTERFACES) \
+	  $(EMFLAGS_LIBRARIES) \
+	  $(EMFLAGS_JSPI) \
+	  $(POWERSYNC_STATIC_FILES) \
+	  $(POWERSYNC_OBJ_FILES_DEBUG) \
+	  $(MC_OBJ_FILES_DEBUG) -o $@
 
 
 # Dynamic main module
@@ -359,7 +410,7 @@ clean-dist:
 dist: dist/wa-sqlite.mjs dist/wa-sqlite-async.mjs dist/wa-sqlite-jspi.mjs dist/wa-sqlite-dynamic-main.mjs dist/wa-sqlite-async-dynamic-main.mjs dist/mc-wa-sqlite.mjs dist/mc-wa-sqlite-async.mjs dist/mc-wa-sqlite-jspi.mjs
 
 # Statically links PowerSync Core
-dist/wa-sqlite.mjs: $(OBJ_FILES_DIST) $(POWERSYNC_OBJ_FILES_DIST) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS) $(POWERSYNC_STATIC_FILES)  $(COMBINED_EXPORTED_FUNCTIONS)
+dist/wa-sqlite.mjs: $(OBJ_FILES_DIST) $(POWERSYNC_OBJ_FILES_DIST) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS) $(POWERSYNC_STATIC_FILES) $(COMBINED_EXPORTED_FUNCTIONS)
 	mkdir -p dist
 	$(EMCC) $(EMFLAGS_DIST) \
 	  $(COMBINED_EMFLAGS_INTERFACES) \
@@ -369,7 +420,7 @@ dist/wa-sqlite.mjs: $(OBJ_FILES_DIST) $(POWERSYNC_OBJ_FILES_DIST) $(EXPORTED_FUN
 	  $(OBJ_FILES_DIST)  -o $@
 
 # Statically links PowerSync Core
-dist/wa-sqlite-async.mjs: $(OBJ_FILES_DIST) $(POWERSYNC_OBJ_FILES_DIST) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS) $(ASYNCIFY_IMPORTS) $(POWERSYNC_STATIC_FILES)  $(COMBINED_EXPORTED_FUNCTIONS)
+dist/wa-sqlite-async.mjs: $(OBJ_FILES_DIST) $(POWERSYNC_OBJ_FILES_DIST) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS) $(ASYNCIFY_IMPORTS) $(POWERSYNC_STATIC_FILES) $(COMBINED_EXPORTED_FUNCTIONS)
 	mkdir -p dist
 	$(EMCC) $(EMFLAGS_DIST) \
 	  $(COMBINED_EMFLAGS_INTERFACES) \
@@ -380,7 +431,7 @@ dist/wa-sqlite-async.mjs: $(OBJ_FILES_DIST) $(POWERSYNC_OBJ_FILES_DIST) $(EXPORT
 	  $(OBJ_FILES_DIST) -o $@
 
 # Statically links PowerSync Core
-dist/wa-sqlite-jspi.mjs: $(OBJ_FILES_DIST) $(POWERSYNC_OBJ_FILES_DIST) $(JSFILES) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS) $(ASYNCIFY_IMPORTS) $(POWERSYNC_STATIC_FILES)  $(COMBINED_EXPORTED_FUNCTIONS)
+dist/wa-sqlite-jspi.mjs: $(OBJ_FILES_DIST) $(POWERSYNC_OBJ_FILES_DIST) $(JSFILES) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS) $(ASYNCIFY_IMPORTS) $(POWERSYNC_STATIC_FILES) $(COMBINED_EXPORTED_FUNCTIONS)
 	mkdir -p dist
 	$(EMCC) $(EMFLAGS_DIST) \
 	  $(COMBINED_EMFLAGS_INTERFACES) \
@@ -390,18 +441,18 @@ dist/wa-sqlite-jspi.mjs: $(OBJ_FILES_DIST) $(POWERSYNC_OBJ_FILES_DIST) $(JSFILES
 	  $(POWERSYNC_OBJ_FILES_DIST) \
 	  $(OBJ_FILES_DIST) -o $@
 
-# Statically links PowerSync Core
-dist/mc-wa-sqlite.mjs: $(OBJ_FILES_DIST) $(POWERSYNC_OBJ_FILES_DIST) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS) $(POWERSYNC_STATIC_FILES)  $(MC_COMBINED_EXPORTED_FUNCTIONS)
+# Statically links PowerSync Core with multiple ciphers
+dist/mc-wa-sqlite.mjs: $(MC_OBJ_FILES_DIST) $(POWERSYNC_OBJ_FILES_DIST) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS) $(POWERSYNC_STATIC_FILES) $(MC_COMBINED_EXPORTED_FUNCTIONS)
 	mkdir -p dist
 	$(EMCC) $(EMFLAGS_DIST) \
 	  $(MC_COMBINED_EMFLAGS_INTERFACES) \
 	  $(EMFLAGS_LIBRARIES) \
 	  $(POWERSYNC_STATIC_FILES) \
 	  $(POWERSYNC_OBJ_FILES_DIST) \
-	  $(OBJ_FILES_DIST)  -o $@
+	  $(MC_OBJ_FILES_DIST)  -o $@
 
-# Statically links PowerSync Core
-dist/mc-wa-sqlite-async.mjs: $(OBJ_FILES_DIST) $(POWERSYNC_OBJ_FILES_DIST) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS) $(ASYNCIFY_IMPORTS) $(POWERSYNC_STATIC_FILES)  $(MC_COMBINED_EXPORTED_FUNCTIONS)
+# Statically links PowerSync Core with multiple ciphers
+dist/mc-wa-sqlite-async.mjs: $(MC_OBJ_FILES_DIST) $(POWERSYNC_OBJ_FILES_DIST) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS) $(ASYNCIFY_IMPORTS) $(POWERSYNC_STATIC_FILES) $(MC_COMBINED_EXPORTED_FUNCTIONS)
 	mkdir -p dist
 	$(EMCC) $(EMFLAGS_DIST) \
 	  $(MC_COMBINED_EMFLAGS_INTERFACES) \
@@ -409,10 +460,10 @@ dist/mc-wa-sqlite-async.mjs: $(OBJ_FILES_DIST) $(POWERSYNC_OBJ_FILES_DIST) $(EXP
 	  $(EMFLAGS_ASYNCIFY_DIST) \
 	  $(POWERSYNC_STATIC_FILES) \
 	  $(POWERSYNC_OBJ_FILES_DIST) \
-	  $(OBJ_FILES_DIST) -o $@
+	  $(MC_OBJ_FILES_DIST) -o $@
 
-# Statically links PowerSync Core
-dist/mc-wa-sqlite-jspi.mjs: $(OBJ_FILES_DIST) $(POWERSYNC_OBJ_FILES_DIST) $(JSFILES) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS) $(ASYNCIFY_IMPORTS) $(POWERSYNC_STATIC_FILES)  $(MC_COMBINED_EXPORTED_FUNCTIONS)
+# Statically links PowerSync Core with multiple ciphers
+dist/mc-wa-sqlite-jspi.mjs: $(MC_OBJ_FILES_DIST) $(POWERSYNC_OBJ_FILES_DIST) $(JSFILES) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS) $(ASYNCIFY_IMPORTS) $(POWERSYNC_STATIC_FILES) $(MC_COMBINED_EXPORTED_FUNCTIONS)
 	mkdir -p dist
 	$(EMCC) $(EMFLAGS_DIST) \
 	  $(MC_COMBINED_EMFLAGS_INTERFACES) \
@@ -420,7 +471,7 @@ dist/mc-wa-sqlite-jspi.mjs: $(OBJ_FILES_DIST) $(POWERSYNC_OBJ_FILES_DIST) $(JSFI
 	  $(EMFLAGS_JSPI) \
 	  $(POWERSYNC_STATIC_FILES) \
 	  $(POWERSYNC_OBJ_FILES_DIST) \
-	  $(OBJ_FILES_DIST) -o $@
+	  $(MC_OBJ_FILES_DIST) -o $@
 
 # Dynamic main module
 # Exported functions are omitted here since everything is currently exported

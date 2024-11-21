@@ -3946,10 +3946,6 @@ function dbg(...args) {
   }
   }
 
-  var __abort_js = () => {
-      abort('native code called abort()');
-    };
-
   var nowIsMonotonic = 1;
   var __emscripten_get_now_is_monotonic = () => nowIsMonotonic;
 
@@ -4495,17 +4491,6 @@ function dbg(...args) {
 
   function _ipppppip_async(...args) { return adapters_support(true, ...args) }
   _ipppppip_async.isAsync = true;
-
-  function _random_get(buffer, size) {
-  try {
-  
-      randomFill(HEAPU8.subarray(buffer, buffer + size));
-      return 0;
-    } catch (e) {
-    if (typeof FS == 'undefined' || !(e.name === 'ErrnoError')) throw e;
-    return e.errno;
-  }
-  }
 
   function _vppippii(...args) { return adapters_support(false, ...args) }
 
@@ -5152,8 +5137,6 @@ var wasmImports = {
   /** @export */
   __syscall_utimensat: ___syscall_utimensat,
   /** @export */
-  _abort_js: __abort_js,
-  /** @export */
   _emscripten_get_now_is_monotonic: __emscripten_get_now_is_monotonic,
   /** @export */
   _emscripten_memcpy_js: __emscripten_memcpy_js,
@@ -5241,8 +5224,6 @@ var wasmImports = {
   ipppppip: _ipppppip,
   /** @export */
   ipppppip_async: _ipppppip_async,
-  /** @export */
-  random_get: _random_get,
   /** @export */
   vppippii: _vppippii,
   /** @export */
@@ -5515,7 +5496,6 @@ var _strerror = createExportWrapper('strerror', 1);
 var _memcmp = Module['_memcmp'] = createExportWrapper('memcmp', 3);
 var _malloc = Module['_malloc'] = createExportWrapper('malloc', 1);
 var _free = Module['_free'] = createExportWrapper('free', 1);
-var _memset = Module['_memset'] = createExportWrapper('memset', 3);
 var _RegisterExtensionFunctions = Module['_RegisterExtensionFunctions'] = createExportWrapper('RegisterExtensionFunctions', 1);
 var _getSqliteFree = Module['_getSqliteFree'] = createExportWrapper('getSqliteFree', 0);
 var _main = Module['_main'] = createExportWrapper('main', 2);
@@ -5526,6 +5506,7 @@ var _libhook_update_hook = Module['_libhook_update_hook'] = createExportWrapper(
 var _libprogress_progress_handler = Module['_libprogress_progress_handler'] = createExportWrapper('libprogress_progress_handler', 4);
 var _libvfs_vfs_register = Module['_libvfs_vfs_register'] = createExportWrapper('libvfs_vfs_register', 6);
 var _memcpy = Module['_memcpy'] = createExportWrapper('memcpy', 3);
+var _memset = Module['_memset'] = createExportWrapper('memset', 3);
 var _fflush = createExportWrapper('fflush', 1);
 var _emscripten_builtin_memalign = createExportWrapper('emscripten_builtin_memalign', 2);
 var __emscripten_tempret_set = createExportWrapper('_emscripten_tempret_set', 1);
@@ -5560,7 +5541,7 @@ var dynCall_ij = Module['dynCall_ij'] = createExportWrapper('dynCall_ij', 3);
 var dynCall_viiji = Module['dynCall_viiji'] = createExportWrapper('dynCall_viiji', 6);
 var dynCall_viijii = Module['dynCall_viijii'] = createExportWrapper('dynCall_viijii', 7);
 var dynCall_iiiijji = Module['dynCall_iiiijji'] = createExportWrapper('dynCall_iiiijji', 9);
-var _sqlite3_version = Module['_sqlite3_version'] = 619416;
+var _sqlite3_version = Module['_sqlite3_version'] = 617752;
 
 // include: postamble.js
 // === Auto-generated postamble setup entry stuff ===
