@@ -48,7 +48,7 @@ const EXT_WASM = new Map([
     {
       name: 'IDBBatchAtomicVFS',
       vfsModule: '../src/examples/IDBBatchAtomicVFS.js',
-      vfsOptions: { lockPolicy: 'shared+hint' }
+      vfsOptions: { lockPolicy: 'exclusive' }
     },
     {
       name: 'IDBMirrorVFS',
@@ -128,6 +128,7 @@ maybeReset()
       const namespace = await import(config.vfsModule);
       const className = config.vfsClassName ?? config.vfsModule.match(/([^/]+)\.js$/)[1];
       const vfs = await namespace[className].create(vfsName, module, config.vfsOptions);
+      console.log('vfs', vfs);
       sqlite3.vfs_register(vfs, true);
     }
 

@@ -30,7 +30,7 @@ var readyPromise = new Promise((resolve, reject) => {
   readyPromiseReject = reject;
 });
 
-[ "_RegisterExtensionFunctions", "_malloc", "_memcpy", "_memcmp", "_memset", "_getTempRet0", "_free", "_sqlite3_aggregate_context", "_sqlite3_auto_extension", "_sqlite3_autovacuum_pages", "_sqlite3_backup_finish", "_sqlite3_backup_init", "_sqlite3_backup_pagecount", "_sqlite3_backup_remaining", "_sqlite3_enable_load_extension", "_sqlite3_backup_step", "_sqlite3_bind_blob", "_sqlite3_bind_blob64", "_sqlite3_bind_double", "_sqlite3_bind_int", "_sqlite3_bind_int64", "_sqlite3_bind_null", "_sqlite3_bind_parameter_count", "_sqlite3_bind_parameter_index", "_sqlite3_bind_parameter_name", "_sqlite3_bind_pointer", "_sqlite3_bind_text", "_sqlite3_bind_text16", "_sqlite3_bind_text64", "_sqlite3_bind_value", "_sqlite3_bind_zeroblob", "_sqlite3_bind_zeroblob64", "_sqlite3_blob_bytes", "_sqlite3_blob_close", "_sqlite3_blob_open", "_sqlite3_blob_read", "_sqlite3_blob_reopen", "_sqlite3_blob_write", "_sqlite3_busy_handler", "_sqlite3_busy_timeout", "_sqlite3_cancel_auto_extension", "_sqlite3_changes", "_sqlite3_changes64", "_sqlite3_clear_bindings", "_sqlite3_close", "_sqlite3_close_v2", "_sqlite3_collation_needed", "_sqlite3_collation_needed16", "_sqlite3_column_blob", "_sqlite3_column_bytes", "_sqlite3_column_bytes16", "_sqlite3_column_count", "_sqlite3_column_double", "_sqlite3_column_int", "_sqlite3_column_int64", "_sqlite3_column_name", "_sqlite3_column_name16", "_sqlite3_column_text", "_sqlite3_column_text16", "_sqlite3_column_type", "_sqlite3_column_value", "_sqlite3_commit_hook", "_sqlite3_compileoption_get", "_sqlite3_compileoption_used", "_sqlite3_complete", "_sqlite3_complete16", "_sqlite3_config", "_sqlite3_context_db_handle", "_sqlite3_create_collation", "_sqlite3_create_collation16", "_sqlite3_create_collation_v2", "_sqlite3_create_filename", "_sqlite3_create_function", "_sqlite3_create_function16", "_sqlite3_create_function_v2", "_sqlite3_create_module", "_sqlite3_create_module_v2", "_sqlite3_create_window_function", "_sqlite3_data_count", "_sqlite3_database_file_object", "_sqlite3_db_cacheflush", "_sqlite3_db_config", "_sqlite3_db_filename", "_sqlite3_db_handle", "_sqlite3_db_mutex", "_sqlite3_db_name", "_sqlite3_db_readonly", "_sqlite3_db_release_memory", "_sqlite3_db_status", "_sqlite3_declare_vtab", "_sqlite3_deserialize", "_sqlite3_drop_modules", "_sqlite3_errcode", "_sqlite3_errmsg", "_sqlite3_errmsg16", "_sqlite3_error_offset", "_sqlite3_errstr", "_sqlite3_exec", "_sqlite3_expanded_sql", "_sqlite3_extended_errcode", "_sqlite3_extended_result_codes", "_sqlite3_file_control", "_sqlite3_filename_database", "_sqlite3_filename_journal", "_sqlite3_filename_wal", "_sqlite3_finalize", "_sqlite3_free", "_sqlite3_free_filename", "_sqlite3_free_table", "_sqlite3_get_autocommit", "_sqlite3_get_auxdata", "_sqlite3_get_clientdata", "_sqlite3_get_table", "_sqlite3_hard_heap_limit64", "_sqlite3_initialize", "_sqlite3_interrupt", "_sqlite3_is_interrupted", "_sqlite3_keyword_check", "_sqlite3_keyword_count", "_sqlite3_keyword_name", "_sqlite3_last_insert_rowid", "_sqlite3_libversion", "_sqlite3_libversion_number", "_sqlite3_limit", "_sqlite3_log", "_sqlite3_malloc", "_sqlite3_malloc64", "_sqlite3_memory_highwater", "_sqlite3_memory_used", "_sqlite3_mprintf", "_sqlite3_msize", "_sqlite3_next_stmt", "_sqlite3_open", "_sqlite3_open16", "_sqlite3_open_v2", "_sqlite3_os_end", "_sqlite3_os_init", "_sqlite3_overload_function", "_sqlite3_prepare", "_sqlite3_prepare16", "_sqlite3_prepare16_v2", "_sqlite3_prepare16_v3", "_sqlite3_prepare_v2", "_sqlite3_prepare_v3", "_sqlite3_progress_handler", "_sqlite3_randomness", "_sqlite3_realloc", "_sqlite3_realloc64", "_sqlite3_load_extension", "_sqlite3_release_memory", "_sqlite3_reset", "_sqlite3_reset_auto_extension", "_sqlite3_result_blob", "_sqlite3_result_blob64", "_sqlite3_result_double", "_sqlite3_result_error", "_sqlite3_result_error16", "_sqlite3_result_error_code", "_sqlite3_result_error_nomem", "_sqlite3_result_error_toobig", "_sqlite3_result_int", "_sqlite3_result_int64", "_sqlite3_result_null", "_sqlite3_result_pointer", "_sqlite3_result_subtype", "_sqlite3_result_text", "_sqlite3_result_text16", "_sqlite3_result_text16be", "_sqlite3_result_text16le", "_sqlite3_result_text64", "_sqlite3_result_value", "_sqlite3_result_zeroblob", "_sqlite3_result_zeroblob64", "_sqlite3_rollback_hook", "_sqlite3_serialize", "_sqlite3_set_authorizer", "_sqlite3_set_auxdata", "_sqlite3_set_clientdata", "_sqlite3_set_last_insert_rowid", "_sqlite3_shutdown", "_sqlite3_sleep", "_sqlite3_snprintf", "_sqlite3_soft_heap_limit64", "_sqlite3_sourceid", "_sqlite3_sql", "_sqlite3_status", "_sqlite3_status64", "_sqlite3_step", "_sqlite3_stmt_busy", "_sqlite3_stmt_explain", "_sqlite3_stmt_isexplain", "_sqlite3_stmt_readonly", "_sqlite3_stmt_status", "_sqlite3_str_append", "_sqlite3_str_appendall", "_sqlite3_str_appendchar", "_sqlite3_str_appendf", "_sqlite3_str_errcode", "_sqlite3_str_finish", "_sqlite3_str_length", "_sqlite3_str_new", "_sqlite3_str_reset", "_sqlite3_str_value", "_sqlite3_str_vappendf", "_sqlite3_strglob", "_sqlite3_stricmp", "_sqlite3_strlike", "_sqlite3_strnicmp", "_sqlite3_system_errno", "_sqlite3_table_column_metadata", "_sqlite3_test_control", "_sqlite3_threadsafe", "_sqlite3_total_changes", "_sqlite3_total_changes64", "_sqlite3_trace_v2", "_sqlite3_txn_state", "_sqlite3_update_hook", "_sqlite3_uri_boolean", "_sqlite3_uri_int64", "_sqlite3_uri_key", "_sqlite3_uri_parameter", "_sqlite3_user_data", "_sqlite3_value_blob", "_sqlite3_value_bytes", "_sqlite3_value_bytes16", "_sqlite3_value_double", "_sqlite3_value_dup", "_sqlite3_value_encoding", "_sqlite3_value_free", "_sqlite3_value_frombind", "_sqlite3_value_int", "_sqlite3_value_int64", "_sqlite3_value_nochange", "_sqlite3_value_numeric_type", "_sqlite3_value_pointer", "_sqlite3_value_subtype", "_sqlite3_value_text", "_sqlite3_value_text16", "_sqlite3_value_text16be", "_sqlite3_value_text16le", "_sqlite3_value_type", "_sqlite3_version", "_sqlite3_vfs_find", "_sqlite3_vfs_register", "_sqlite3_vfs_unregister", "_sqlite3_vmprintf", "_sqlite3_vsnprintf", "_sqlite3_vtab_collation", "_sqlite3_vtab_config", "_sqlite3_vtab_distinct", "_sqlite3_vtab_in", "_sqlite3_vtab_in_first", "_sqlite3_vtab_in_next", "_sqlite3_vtab_nochange", "_sqlite3_vtab_on_conflict", "_sqlite3_vtab_rhs_value", "_sqlite3_wal_autocheckpoint", "_sqlite3_wal_checkpoint", "_sqlite3_wal_checkpoint_v2", "_sqlite3_wal_hook", "_powersync_init_static", "_memory", "_getSqliteFree", "_libauthorizer_set_authorizer", "_libfunction_create_function", "_libhook_commit_hook", "_libhook_update_hook", "_libprogress_progress_handler", "_libvfs_vfs_register", "___indirect_function_table", "_main", "onRuntimeInitialized" ].forEach(prop => {
+[ "_RegisterExtensionFunctions", "_malloc", "_memcpy", "_memcmp", "_memset", "_getTempRet0", "_free", "_sqlite3_aggregate_context", "_sqlite3_auto_extension", "_sqlite3_autovacuum_pages", "_sqlite3_backup_finish", "_sqlite3_backup_init", "_sqlite3_backup_pagecount", "_sqlite3_backup_remaining", "_sqlite3_enable_load_extension", "_sqlite3_backup_step", "_sqlite3_bind_blob", "_sqlite3_bind_blob64", "_sqlite3_bind_double", "_sqlite3_bind_int", "_sqlite3_bind_int64", "_sqlite3_bind_null", "_sqlite3_bind_parameter_count", "_sqlite3_bind_parameter_index", "_sqlite3_bind_parameter_name", "_sqlite3_bind_pointer", "_sqlite3_bind_text", "_sqlite3_bind_text16", "_sqlite3_bind_text64", "_sqlite3_bind_value", "_sqlite3_bind_zeroblob", "_sqlite3_bind_zeroblob64", "_sqlite3_blob_bytes", "_sqlite3_blob_close", "_sqlite3_blob_open", "_sqlite3_blob_read", "_sqlite3_blob_reopen", "_sqlite3_blob_write", "_sqlite3_busy_handler", "_sqlite3_busy_timeout", "_sqlite3_cancel_auto_extension", "_sqlite3_changes", "_sqlite3_changes64", "_sqlite3_clear_bindings", "_sqlite3_close", "_sqlite3_close_v2", "_sqlite3_collation_needed", "_sqlite3_collation_needed16", "_sqlite3_column_blob", "_sqlite3_column_bytes", "_sqlite3_column_bytes16", "_sqlite3_column_count", "_sqlite3_column_double", "_sqlite3_column_int", "_sqlite3_column_int64", "_sqlite3_column_name", "_sqlite3_column_name16", "_sqlite3_column_text", "_sqlite3_column_text16", "_sqlite3_column_type", "_sqlite3_column_value", "_sqlite3_commit_hook", "_sqlite3_compileoption_get", "_sqlite3_compileoption_used", "_sqlite3_complete", "_sqlite3_complete16", "_sqlite3_config", "_sqlite3_context_db_handle", "_sqlite3_create_collation", "_sqlite3_create_collation16", "_sqlite3_create_collation_v2", "_sqlite3_create_filename", "_sqlite3_create_function", "_sqlite3_create_function16", "_sqlite3_create_function_v2", "_sqlite3_create_module", "_sqlite3_create_module_v2", "_sqlite3_create_window_function", "_sqlite3_data_count", "_sqlite3_database_file_object", "_sqlite3_db_cacheflush", "_sqlite3_db_config", "_sqlite3_db_filename", "_sqlite3_db_handle", "_sqlite3_db_mutex", "_sqlite3_db_name", "_sqlite3_db_readonly", "_sqlite3_db_release_memory", "_sqlite3_db_status", "_sqlite3_declare_vtab", "_sqlite3_deserialize", "_sqlite3_drop_modules", "_sqlite3_errcode", "_sqlite3_errmsg", "_sqlite3_errmsg16", "_sqlite3_error_offset", "_sqlite3_errstr", "_sqlite3_exec", "_sqlite3_expanded_sql", "_sqlite3_extended_errcode", "_sqlite3_extended_result_codes", "_sqlite3_file_control", "_sqlite3_filename_database", "_sqlite3_filename_journal", "_sqlite3_filename_wal", "_sqlite3_finalize", "_sqlite3_free", "_sqlite3_free_filename", "_sqlite3_free_table", "_sqlite3_get_autocommit", "_sqlite3_get_auxdata", "_sqlite3_get_clientdata", "_sqlite3_get_table", "_sqlite3_hard_heap_limit64", "_sqlite3_initialize", "_sqlite3_interrupt", "_sqlite3_is_interrupted", "_sqlite3_keyword_check", "_sqlite3_keyword_count", "_sqlite3_keyword_name", "_sqlite3_last_insert_rowid", "_sqlite3_libversion", "_sqlite3_libversion_number", "_sqlite3_limit", "_sqlite3_log", "_sqlite3_malloc", "_sqlite3_malloc64", "_sqlite3_memory_highwater", "_sqlite3_memory_used", "_sqlite3_mprintf", "_sqlite3_msize", "_sqlite3_next_stmt", "_sqlite3_open", "_sqlite3_open16", "_sqlite3_open_v2", "_sqlite3_os_end", "_sqlite3_os_init", "_sqlite3_overload_function", "_sqlite3_prepare", "_sqlite3_prepare16", "_sqlite3_prepare16_v2", "_sqlite3_prepare16_v3", "_sqlite3_prepare_v2", "_sqlite3_prepare_v3", "_sqlite3_progress_handler", "_sqlite3_randomness", "_sqlite3_realloc", "_sqlite3_realloc64", "_sqlite3_load_extension", "_sqlite3_release_memory", "_sqlite3_reset", "_sqlite3_reset_auto_extension", "_sqlite3_result_blob", "_sqlite3_result_blob64", "_sqlite3_result_double", "_sqlite3_result_error", "_sqlite3_result_error16", "_sqlite3_result_error_code", "_sqlite3_result_error_nomem", "_sqlite3_result_error_toobig", "_sqlite3_result_int", "_sqlite3_result_int64", "_sqlite3_result_null", "_sqlite3_result_pointer", "_sqlite3_result_subtype", "_sqlite3_result_text", "_sqlite3_result_text16", "_sqlite3_result_text16be", "_sqlite3_result_text16le", "_sqlite3_result_text64", "_sqlite3_result_value", "_sqlite3_result_zeroblob", "_sqlite3_result_zeroblob64", "_sqlite3_rollback_hook", "_sqlite3_serialize", "_sqlite3_set_authorizer", "_sqlite3_set_auxdata", "_sqlite3_set_clientdata", "_sqlite3_set_last_insert_rowid", "_sqlite3_shutdown", "_sqlite3_sleep", "_sqlite3_snprintf", "_sqlite3_soft_heap_limit64", "_sqlite3_sourceid", "_sqlite3_sql", "_sqlite3_status", "_sqlite3_status64", "_sqlite3_step", "_sqlite3_stmt_busy", "_sqlite3_stmt_explain", "_sqlite3_stmt_isexplain", "_sqlite3_stmt_readonly", "_sqlite3_stmt_status", "_sqlite3_str_append", "_sqlite3_str_appendall", "_sqlite3_str_appendchar", "_sqlite3_str_appendf", "_sqlite3_str_errcode", "_sqlite3_str_finish", "_sqlite3_str_length", "_sqlite3_str_new", "_sqlite3_str_reset", "_sqlite3_str_value", "_sqlite3_str_vappendf", "_sqlite3_strglob", "_sqlite3_stricmp", "_sqlite3_strlike", "_sqlite3_strnicmp", "_sqlite3_system_errno", "_sqlite3_table_column_metadata", "_sqlite3_test_control", "_sqlite3_threadsafe", "_sqlite3_total_changes", "_sqlite3_total_changes64", "_sqlite3_trace_v2", "_sqlite3_txn_state", "_sqlite3_update_hook", "_sqlite3_uri_boolean", "_sqlite3_uri_int64", "_sqlite3_uri_key", "_sqlite3_uri_parameter", "_sqlite3_user_data", "_sqlite3_value_blob", "_sqlite3_value_bytes", "_sqlite3_value_bytes16", "_sqlite3_value_double", "_sqlite3_value_dup", "_sqlite3_value_encoding", "_sqlite3_value_free", "_sqlite3_value_frombind", "_sqlite3_value_int", "_sqlite3_value_int64", "_sqlite3_value_nochange", "_sqlite3_value_numeric_type", "_sqlite3_value_pointer", "_sqlite3_value_subtype", "_sqlite3_value_text", "_sqlite3_value_text16", "_sqlite3_value_text16be", "_sqlite3_value_text16le", "_sqlite3_value_type", "_sqlite3_version", "_sqlite3_vfs_find", "_sqlite3_vfs_register", "_sqlite3_vfs_unregister", "_sqlite3_vmprintf", "_sqlite3_vsnprintf", "_sqlite3_vtab_collation", "_sqlite3_vtab_config", "_sqlite3_vtab_distinct", "_sqlite3_vtab_in", "_sqlite3_vtab_in_first", "_sqlite3_vtab_in_next", "_sqlite3_vtab_nochange", "_sqlite3_vtab_on_conflict", "_sqlite3_vtab_rhs_value", "_sqlite3_wal_autocheckpoint", "_sqlite3_wal_checkpoint", "_sqlite3_wal_checkpoint_v2", "_sqlite3_wal_hook", "_powersync_init_static", "_memory", "_getSqliteFree", "_libauthorizer_set_authorizer", "_libfunction_create_function", "_libhook_commit_hook", "_libhook_update_hook", "_libprogress_progress_handler", "_libvfs_vfs_register", "___indirect_function_table", "___set_stack_limits", "_main", "onRuntimeInitialized" ].forEach(prop => {
   if (!Object.getOwnPropertyDescriptor(readyPromise, prop)) {
     Object.defineProperty(readyPromise, prop, {
       get: () => abort("You are getting " + prop + " on the Promise object, instead of the instance. Use .then() to get called back with the instance, see the MODULARIZE docs in src/settings.js"),
@@ -374,7 +374,9 @@ function writeStackCookie() {
   // We write cookies to the final two words in the stack and detect if they are
   // ever overwritten.
   SAFE_HEAP_STORE(((max) >> 2) * 4, 34821223, 4);
+  checkInt32(34821223);
   SAFE_HEAP_STORE((((max) + (4)) >> 2) * 4, 2310721022, 4);
+  checkInt32(2310721022);
 }
 
 function checkStackCookie() {
@@ -423,6 +425,7 @@ function initRuntime() {
   assert(!runtimeInitialized);
   runtimeInitialized = true;
   checkStackCookie();
+  setStackLimits();
   if (!Module["noFSInit"] && !FS.initialized) FS.init();
   FS.ignorePermissions = false;
   TTY.init();
@@ -854,6 +857,44 @@ function unexportedRuntimeSymbol(sym) {
   }
 }
 
+var MAX_UINT8 = (2 ** 8) - 1;
+
+var MAX_UINT16 = (2 ** 16) - 1;
+
+var MAX_UINT32 = (2 ** 32) - 1;
+
+var MAX_UINT53 = (2 ** 53) - 1;
+
+var MAX_UINT64 = (2 ** 64) - 1;
+
+var MIN_INT8 = -(2 ** (8 - 1));
+
+var MIN_INT16 = -(2 ** (16 - 1));
+
+var MIN_INT32 = -(2 ** (32 - 1));
+
+var MIN_INT53 = -(2 ** (53 - 1));
+
+var MIN_INT64 = -(2 ** (64 - 1));
+
+function checkInt(value, bits, min, max) {
+  assert(Number.isInteger(Number(value)), `attempt to write non-integer (${value}) into integer heap`);
+  assert(value <= max, `value (${value}) too large to write as ${bits}-bit value`);
+  assert(value >= min, `value (${value}) too small to write as ${bits}-bit value`);
+}
+
+var checkInt1 = value => checkInt(value, 1, 1);
+
+var checkInt8 = value => checkInt(value, 8, MIN_INT8, MAX_UINT8);
+
+var checkInt16 = value => checkInt(value, 16, MIN_INT16, MAX_UINT16);
+
+var checkInt32 = value => checkInt(value, 32, MIN_INT32, MAX_UINT32);
+
+var checkInt53 = value => checkInt(value, 53, MIN_INT53, MAX_UINT53);
+
+var checkInt64 = value => checkInt(value, 64, MIN_INT64, MAX_UINT64);
+
 // Used by XXXXX_DEBUG settings to output debug messages.
 function dbg(...args) {
   // TODO(sbc): Make this configurable somehow.  Its not always convenient for
@@ -955,6 +996,12 @@ var ptrToString = ptr => {
   return "0x" + ptr.toString(16).padStart(8, "0");
 };
 
+var setStackLimits = () => {
+  var stackLow = _emscripten_stack_get_base();
+  var stackHigh = _emscripten_stack_get_end();
+  ___set_stack_limits(stackLow, stackHigh);
+};
+
 /**
      * @param {number} ptr
      * @param {number} value
@@ -964,18 +1011,22 @@ var ptrToString = ptr => {
   switch (type) {
    case "i1":
     SAFE_HEAP_STORE(ptr, value, 1);
+    checkInt8(value);
     break;
 
    case "i8":
     SAFE_HEAP_STORE(ptr, value, 1);
+    checkInt8(value);
     break;
 
    case "i16":
     SAFE_HEAP_STORE(((ptr) >> 1) * 2, value, 2);
+    checkInt16(value);
     break;
 
    case "i32":
     SAFE_HEAP_STORE(((ptr) >> 2) * 4, value, 4);
+    checkInt32(value);
     break;
 
    case "i64":
@@ -1003,18 +1054,22 @@ function setValue_safe(ptr, value, type = "i8") {
   switch (type) {
    case "i1":
     HEAP8[ptr] = value;
+    checkInt8(value);
     break;
 
    case "i8":
     HEAP8[ptr] = value;
+    checkInt8(value);
     break;
 
    case "i16":
     HEAP16[((ptr) >> 1)] = value;
+    checkInt16(value);
     break;
 
    case "i32":
     HEAP32[((ptr) >> 2)] = value;
+    checkInt32(value);
     break;
 
    case "i64":
@@ -1136,6 +1191,12 @@ var UTF8Decoder = typeof TextDecoder != "undefined" ? new TextDecoder : undefine
 
 var ___assert_fail = (condition, filename, line, func) => {
   abort(`Assertion failed: ${UTF8ToString(condition)}, at: ` + [ filename ? UTF8ToString(filename) : "unknown filename", line, func ? UTF8ToString(func) : "unknown function" ]);
+};
+
+var ___handle_stack_overflow = requested => {
+  var base = _emscripten_stack_get_base();
+  var end = _emscripten_stack_get_end();
+  abort(`stack overflow (Attempt to set SP to ${ptrToString(requested)}` + `, with stack limits [${ptrToString(end)} - ${ptrToString(base)}` + "]). If you require more stack space build with -sSTACK_SIZE=<bytes>");
 };
 
 var PATH = {
@@ -3711,32 +3772,48 @@ var SYSCALLS = {
   doStat(func, path, buf) {
     var stat = func(path);
     SAFE_HEAP_STORE(((buf) >> 2) * 4, stat.dev, 4);
+    checkInt32(stat.dev);
     SAFE_HEAP_STORE((((buf) + (4)) >> 2) * 4, stat.mode, 4);
+    checkInt32(stat.mode);
     SAFE_HEAP_STORE((((buf) + (8)) >> 2) * 4, stat.nlink, 4);
+    checkInt32(stat.nlink);
     SAFE_HEAP_STORE((((buf) + (12)) >> 2) * 4, stat.uid, 4);
+    checkInt32(stat.uid);
     SAFE_HEAP_STORE((((buf) + (16)) >> 2) * 4, stat.gid, 4);
+    checkInt32(stat.gid);
     SAFE_HEAP_STORE((((buf) + (20)) >> 2) * 4, stat.rdev, 4);
+    checkInt32(stat.rdev);
     (tempI64 = [ stat.size >>> 0, (tempDouble = stat.size, (+(Math.abs(tempDouble))) >= 1 ? (tempDouble > 0 ? (+(Math.floor((tempDouble) / 4294967296))) >>> 0 : (~~((+(Math.ceil((tempDouble - +(((~~(tempDouble))) >>> 0)) / 4294967296))))) >>> 0) : 0) ], 
     SAFE_HEAP_STORE((((buf) + (24)) >> 2) * 4, tempI64[0], 4), SAFE_HEAP_STORE((((buf) + (28)) >> 2) * 4, tempI64[1], 4));
+    checkInt64(stat.size);
     SAFE_HEAP_STORE((((buf) + (32)) >> 2) * 4, 4096, 4);
+    checkInt32(4096);
     SAFE_HEAP_STORE((((buf) + (36)) >> 2) * 4, stat.blocks, 4);
+    checkInt32(stat.blocks);
     var atime = stat.atime.getTime();
     var mtime = stat.mtime.getTime();
     var ctime = stat.ctime.getTime();
     (tempI64 = [ Math.floor(atime / 1e3) >>> 0, (tempDouble = Math.floor(atime / 1e3), 
     (+(Math.abs(tempDouble))) >= 1 ? (tempDouble > 0 ? (+(Math.floor((tempDouble) / 4294967296))) >>> 0 : (~~((+(Math.ceil((tempDouble - +(((~~(tempDouble))) >>> 0)) / 4294967296))))) >>> 0) : 0) ], 
     SAFE_HEAP_STORE((((buf) + (40)) >> 2) * 4, tempI64[0], 4), SAFE_HEAP_STORE((((buf) + (44)) >> 2) * 4, tempI64[1], 4));
+    checkInt64(Math.floor(atime / 1e3));
     SAFE_HEAP_STORE((((buf) + (48)) >> 2) * 4, (atime % 1e3) * 1e3 * 1e3, 4);
+    checkInt32((atime % 1e3) * 1e3 * 1e3);
     (tempI64 = [ Math.floor(mtime / 1e3) >>> 0, (tempDouble = Math.floor(mtime / 1e3), 
     (+(Math.abs(tempDouble))) >= 1 ? (tempDouble > 0 ? (+(Math.floor((tempDouble) / 4294967296))) >>> 0 : (~~((+(Math.ceil((tempDouble - +(((~~(tempDouble))) >>> 0)) / 4294967296))))) >>> 0) : 0) ], 
     SAFE_HEAP_STORE((((buf) + (56)) >> 2) * 4, tempI64[0], 4), SAFE_HEAP_STORE((((buf) + (60)) >> 2) * 4, tempI64[1], 4));
+    checkInt64(Math.floor(mtime / 1e3));
     SAFE_HEAP_STORE((((buf) + (64)) >> 2) * 4, (mtime % 1e3) * 1e3 * 1e3, 4);
+    checkInt32((mtime % 1e3) * 1e3 * 1e3);
     (tempI64 = [ Math.floor(ctime / 1e3) >>> 0, (tempDouble = Math.floor(ctime / 1e3), 
     (+(Math.abs(tempDouble))) >= 1 ? (tempDouble > 0 ? (+(Math.floor((tempDouble) / 4294967296))) >>> 0 : (~~((+(Math.ceil((tempDouble - +(((~~(tempDouble))) >>> 0)) / 4294967296))))) >>> 0) : 0) ], 
     SAFE_HEAP_STORE((((buf) + (72)) >> 2) * 4, tempI64[0], 4), SAFE_HEAP_STORE((((buf) + (76)) >> 2) * 4, tempI64[1], 4));
+    checkInt64(Math.floor(ctime / 1e3));
     SAFE_HEAP_STORE((((buf) + (80)) >> 2) * 4, (ctime % 1e3) * 1e3 * 1e3, 4);
+    checkInt32((ctime % 1e3) * 1e3 * 1e3);
     (tempI64 = [ stat.ino >>> 0, (tempDouble = stat.ino, (+(Math.abs(tempDouble))) >= 1 ? (tempDouble > 0 ? (+(Math.floor((tempDouble) / 4294967296))) >>> 0 : (~~((+(Math.ceil((tempDouble - +(((~~(tempDouble))) >>> 0)) / 4294967296))))) >>> 0) : 0) ], 
     SAFE_HEAP_STORE((((buf) + (88)) >> 2) * 4, tempI64[0], 4), SAFE_HEAP_STORE((((buf) + (92)) >> 2) * 4, tempI64[1], 4));
+    checkInt64(stat.ino);
     return 0;
   },
   doMsync(addr, stream, len, flags, offset) {
@@ -3872,6 +3949,7 @@ function ___syscall_fcntl64(fd, cmd, varargs) {
         var offset = 0;
         // We're always unlocked.
         SAFE_HEAP_STORE((((arg) + (offset)) >> 1) * 2, 2, 2);
+        checkInt16(2);
         return 0;
       }
 
@@ -4093,9 +4171,15 @@ function ___syscall_utimensat(dirfd, path, times, flags) {
   }
 }
 
+var __abort_js = () => {
+  abort("native code called abort()");
+};
+
 var nowIsMonotonic = 1;
 
 var __emscripten_get_now_is_monotonic = () => nowIsMonotonic;
+
+var __emscripten_memcpy_js = (dest, src, num) => HEAPU8.copyWithin(dest, src, src + num);
 
 var isLeapYear = year => year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
 
@@ -4115,21 +4199,31 @@ function __localtime_js(time_low, time_high, tmPtr) {
   var time = convertI32PairToI53Checked(time_low, time_high);
   var date = new Date(time * 1e3);
   SAFE_HEAP_STORE(((tmPtr) >> 2) * 4, date.getSeconds(), 4);
+  checkInt32(date.getSeconds());
   SAFE_HEAP_STORE((((tmPtr) + (4)) >> 2) * 4, date.getMinutes(), 4);
+  checkInt32(date.getMinutes());
   SAFE_HEAP_STORE((((tmPtr) + (8)) >> 2) * 4, date.getHours(), 4);
+  checkInt32(date.getHours());
   SAFE_HEAP_STORE((((tmPtr) + (12)) >> 2) * 4, date.getDate(), 4);
+  checkInt32(date.getDate());
   SAFE_HEAP_STORE((((tmPtr) + (16)) >> 2) * 4, date.getMonth(), 4);
+  checkInt32(date.getMonth());
   SAFE_HEAP_STORE((((tmPtr) + (20)) >> 2) * 4, date.getFullYear() - 1900, 4);
+  checkInt32(date.getFullYear() - 1900);
   SAFE_HEAP_STORE((((tmPtr) + (24)) >> 2) * 4, date.getDay(), 4);
+  checkInt32(date.getDay());
   var yday = ydayFromDate(date) | 0;
   SAFE_HEAP_STORE((((tmPtr) + (28)) >> 2) * 4, yday, 4);
+  checkInt32(yday);
   SAFE_HEAP_STORE((((tmPtr) + (36)) >> 2) * 4, -(date.getTimezoneOffset() * 60), 4);
+  checkInt32(-(date.getTimezoneOffset() * 60));
   // Attention: DST is in December in South, and some regions don't have DST at all.
   var start = new Date(date.getFullYear(), 0, 1);
   var summerOffset = new Date(date.getFullYear(), 6, 1).getTimezoneOffset();
   var winterOffset = start.getTimezoneOffset();
   var dst = (summerOffset != winterOffset && date.getTimezoneOffset() == Math.min(winterOffset, summerOffset)) | 0;
   SAFE_HEAP_STORE((((tmPtr) + (32)) >> 2) * 4, dst, 4);
+  checkInt32(dst);
 }
 
 function __mmap_js(len, prot, flags, fd, offset_low, offset_high, allocated, addr) {
@@ -4140,6 +4234,7 @@ function __mmap_js(len, prot, flags, fd, offset_low, offset_high, allocated, add
     var res = FS.mmap(stream, len, offset, prot, flags);
     var ptr = res.ptr;
     SAFE_HEAP_STORE(((allocated) >> 2) * 4, res.allocated, 4);
+    checkInt32(res.allocated);
     SAFE_HEAP_STORE(((addr) >> 2) * 4, ptr, 4);
     return 0;
   } catch (e) {
@@ -4181,7 +4276,9 @@ var __tzset_js = (timezone, daylight, std_name, dst_name) => {
   // as returned by stdTimezoneOffset.
   // See http://pubs.opengroup.org/onlinepubs/009695399/functions/tzset.html
   SAFE_HEAP_STORE(((timezone) >> 2) * 4, stdTimezoneOffset * 60, 4);
+  checkInt32(stdTimezoneOffset * 60);
   SAFE_HEAP_STORE(((daylight) >> 2) * 4, Number(winterOffset != summerOffset), 4);
+  checkInt32(Number(winterOffset != summerOffset));
   var extractZone = timezoneOffset => {
     // Why inverse sign?
     // Read here https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Date/getTimezoneOffset
@@ -4274,7 +4371,10 @@ var _emscripten_resize_heap = requestedSize => {
     // but limit overreserving (default to capping at +96MB overgrowth at most)
     overGrownHeapSize = Math.min(overGrownHeapSize, requestedSize + 100663296);
     var newSize = Math.min(maxHeapSize, alignMemory(Math.max(requestedSize, overGrownHeapSize), 65536));
+    var t0 = _emscripten_get_now();
     var replacement = growMemory(newSize);
+    var t1 = _emscripten_get_now();
+    dbg(`Heap resize call from ${oldSize} to ${newSize} took ${(t1 - t0)} msecs. Success: ${!!replacement}`);
     if (replacement) {
       return true;
     }
@@ -4321,9 +4421,11 @@ var stringToAscii = (str, buffer) => {
   for (var i = 0; i < str.length; ++i) {
     assert(str.charCodeAt(i) === (str.charCodeAt(i) & 255));
     SAFE_HEAP_STORE(buffer++, str.charCodeAt(i), 1);
+    checkInt8(str.charCodeAt(i));
   }
   // Null-terminate the string
   SAFE_HEAP_STORE(buffer, 0, 1);
+  checkInt8(0);
 };
 
 var _environ_get = (__environ, environ_buf) => {
@@ -4331,6 +4433,7 @@ var _environ_get = (__environ, environ_buf) => {
   getEnvStrings().forEach((string, i) => {
     var ptr = environ_buf + bufSize;
     SAFE_HEAP_STORE((((__environ) + (i * 4)) >> 2) * 4, ptr, 4);
+    checkInt32(ptr);
     stringToAscii(string, ptr);
     bufSize += string.length + 1;
   });
@@ -4340,9 +4443,11 @@ var _environ_get = (__environ, environ_buf) => {
 var _environ_sizes_get = (penviron_count, penviron_buf_size) => {
   var strings = getEnvStrings();
   SAFE_HEAP_STORE(((penviron_count) >> 2) * 4, strings.length, 4);
+  checkInt32(strings.length);
   var bufSize = 0;
   strings.forEach(string => bufSize += string.length + 1);
   SAFE_HEAP_STORE(((penviron_buf_size) >> 2) * 4, bufSize, 4);
+  checkInt32(bufSize);
   return 0;
 };
 
@@ -4369,11 +4474,15 @@ function _fd_fdstat_get(fd, pbuf) {
       var type = stream.tty ? 2 : FS.isDir(stream.mode) ? 3 : FS.isLink(stream.mode) ? 7 : 4;
     }
     SAFE_HEAP_STORE(pbuf, type, 1);
+    checkInt8(type);
     SAFE_HEAP_STORE((((pbuf) + (2)) >> 1) * 2, flags, 2);
+    checkInt16(flags);
     (tempI64 = [ rightsBase >>> 0, (tempDouble = rightsBase, (+(Math.abs(tempDouble))) >= 1 ? (tempDouble > 0 ? (+(Math.floor((tempDouble) / 4294967296))) >>> 0 : (~~((+(Math.ceil((tempDouble - +(((~~(tempDouble))) >>> 0)) / 4294967296))))) >>> 0) : 0) ], 
     SAFE_HEAP_STORE((((pbuf) + (8)) >> 2) * 4, tempI64[0], 4), SAFE_HEAP_STORE((((pbuf) + (12)) >> 2) * 4, tempI64[1], 4));
+    checkInt64(rightsBase);
     (tempI64 = [ rightsInheriting >>> 0, (tempDouble = rightsInheriting, (+(Math.abs(tempDouble))) >= 1 ? (tempDouble > 0 ? (+(Math.floor((tempDouble) / 4294967296))) >>> 0 : (~~((+(Math.ceil((tempDouble - +(((~~(tempDouble))) >>> 0)) / 4294967296))))) >>> 0) : 0) ], 
     SAFE_HEAP_STORE((((pbuf) + (16)) >> 2) * 4, tempI64[0], 4), SAFE_HEAP_STORE((((pbuf) + (20)) >> 2) * 4, tempI64[1], 4));
+    checkInt64(rightsInheriting);
     return 0;
   } catch (e) {
     if (typeof FS == "undefined" || !(e.name === "ErrnoError")) throw e;
@@ -4404,6 +4513,7 @@ function _fd_read(fd, iov, iovcnt, pnum) {
     var stream = SYSCALLS.getStreamFromFD(fd);
     var num = doReadv(stream, iov, iovcnt);
     SAFE_HEAP_STORE(((pnum) >> 2) * 4, num, 4);
+    checkInt32(num);
     return 0;
   } catch (e) {
     if (typeof FS == "undefined" || !(e.name === "ErrnoError")) throw e;
@@ -4419,6 +4529,7 @@ function _fd_seek(fd, offset_low, offset_high, whence, newOffset) {
     FS.llseek(stream, offset, whence);
     (tempI64 = [ stream.position >>> 0, (tempDouble = stream.position, (+(Math.abs(tempDouble))) >= 1 ? (tempDouble > 0 ? (+(Math.floor((tempDouble) / 4294967296))) >>> 0 : (~~((+(Math.ceil((tempDouble - +(((~~(tempDouble))) >>> 0)) / 4294967296))))) >>> 0) : 0) ], 
     SAFE_HEAP_STORE(((newOffset) >> 2) * 4, tempI64[0], 4), SAFE_HEAP_STORE((((newOffset) + (4)) >> 2) * 4, tempI64[1], 4));
+    checkInt64(stream.position);
     if (stream.getdents && offset === 0 && whence === 0) stream.getdents = null;
     // reset readdir state
     return 0;
@@ -4479,6 +4590,7 @@ function _fd_write(fd, iov, iovcnt, pnum) {
     var stream = SYSCALLS.getStreamFromFD(fd);
     var num = doWritev(stream, iov, iovcnt);
     SAFE_HEAP_STORE(((pnum) >> 2) * 4, num, 4);
+    checkInt32(num);
     return 0;
   } catch (e) {
     if (typeof FS == "undefined" || !(e.name === "ErrnoError")) throw e;
@@ -4994,6 +5106,12 @@ var setWasmTableEntry = (idx, func) => {
     return rtn;
   }
   // It's not in the table, add it now.
+  // Make sure functionsInTableMap is actually up to date, that is, that this
+  // function is not actually in the wasm Table despite not being tracked in
+  // functionsInTableMap.
+  for (var i = 0; i < wasmTable.length; i++) {
+    assert(getWasmTableEntry(i) != func, "function in Table but not functionsInTableMap");
+  }
   var ret = getEmptyTableSlot();
   // Set the new value.
   try {
@@ -5110,10 +5228,12 @@ var stringToUTF16 = (str, outPtr, maxBytesToWrite) => {
     var codeUnit = str.charCodeAt(i);
     // possibly a lead surrogate
     SAFE_HEAP_STORE(((outPtr) >> 1) * 2, codeUnit, 2);
+    checkInt16(codeUnit);
     outPtr += 2;
   }
   // Null-terminate the pointer to the HEAP.
   SAFE_HEAP_STORE(((outPtr) >> 1) * 2, 0, 2);
+  checkInt16(0);
   return outPtr - startPtr;
 };
 
@@ -5135,11 +5255,13 @@ var stringToUTF32 = (str, outPtr, maxBytesToWrite) => {
       codeUnit = 65536 + ((codeUnit & 1023) << 10) | (trailSurrogate & 1023);
     }
     SAFE_HEAP_STORE(((outPtr) >> 2) * 4, codeUnit, 4);
+    checkInt32(codeUnit);
     outPtr += 4;
     if (outPtr + 4 > endPtr) break;
   }
   // Null-terminate the pointer to the HEAP.
   SAFE_HEAP_STORE(((outPtr) >> 2) * 4, 0, 4);
+  checkInt32(0);
   return outPtr - startPtr;
 };
 
@@ -5234,6 +5356,7 @@ function checkIncomingModuleAPI() {
 
 var wasmImports = {
   /** @export */ __assert_fail: ___assert_fail,
+  /** @export */ __handle_stack_overflow: ___handle_stack_overflow,
   /** @export */ __syscall_chmod: ___syscall_chmod,
   /** @export */ __syscall_faccessat: ___syscall_faccessat,
   /** @export */ __syscall_fchmod: ___syscall_fchmod,
@@ -5251,7 +5374,9 @@ var wasmImports = {
   /** @export */ __syscall_stat64: ___syscall_stat64,
   /** @export */ __syscall_unlinkat: ___syscall_unlinkat,
   /** @export */ __syscall_utimensat: ___syscall_utimensat,
+  /** @export */ _abort_js: __abort_js,
   /** @export */ _emscripten_get_now_is_monotonic: __emscripten_get_now_is_monotonic,
+  /** @export */ _emscripten_memcpy_js: __emscripten_memcpy_js,
   /** @export */ _localtime_js: __localtime_js,
   /** @export */ _mmap_js: __mmap_js,
   /** @export */ _munmap_js: __munmap_js,
@@ -5870,31 +5995,9 @@ var __emscripten_stack_alloc = a0 => (__emscripten_stack_alloc = wasmExports["_e
 
 var _emscripten_stack_get_current = () => (_emscripten_stack_get_current = wasmExports["emscripten_stack_get_current"])();
 
-var dynCall_ii = Module["dynCall_ii"] = createExportWrapper("dynCall_ii", 2);
-
-var dynCall_iiii = Module["dynCall_iiii"] = createExportWrapper("dynCall_iiii", 4);
+var ___set_stack_limits = Module["___set_stack_limits"] = createExportWrapper("__set_stack_limits", 2);
 
 var dynCall_jiji = Module["dynCall_jiji"] = createExportWrapper("dynCall_jiji", 5);
-
-var dynCall_iidiiii = Module["dynCall_iidiiii"] = createExportWrapper("dynCall_iidiiii", 7);
-
-var dynCall_vii = Module["dynCall_vii"] = createExportWrapper("dynCall_vii", 3);
-
-var dynCall_iii = Module["dynCall_iii"] = createExportWrapper("dynCall_iii", 3);
-
-var dynCall_viii = Module["dynCall_viii"] = createExportWrapper("dynCall_viii", 4);
-
-var dynCall_vi = Module["dynCall_vi"] = createExportWrapper("dynCall_vi", 2);
-
-var dynCall_iiiiiii = Module["dynCall_iiiiiii"] = createExportWrapper("dynCall_iiiiiii", 7);
-
-var dynCall_iiiiii = Module["dynCall_iiiiii"] = createExportWrapper("dynCall_iiiiii", 6);
-
-var dynCall_iiiii = Module["dynCall_iiiii"] = createExportWrapper("dynCall_iiiii", 5);
-
-var dynCall_viiii = Module["dynCall_viiii"] = createExportWrapper("dynCall_viiii", 5);
-
-var dynCall_iiiiiiiii = Module["dynCall_iiiiiiiii"] = createExportWrapper("dynCall_iiiiiiiii", 9);
 
 var dynCall_vijii = Module["dynCall_vijii"] = createExportWrapper("dynCall_vijii", 6);
 
@@ -5910,27 +6013,15 @@ var dynCall_iijii = Module["dynCall_iijii"] = createExportWrapper("dynCall_iijii
 
 var dynCall_iiji = Module["dynCall_iiji"] = createExportWrapper("dynCall_iiji", 5);
 
-var dynCall_i = Module["dynCall_i"] = createExportWrapper("dynCall_i", 1);
-
 var dynCall_iiiiiij = Module["dynCall_iiiiiij"] = createExportWrapper("dynCall_iiiiiij", 8);
 
-var dynCall_iiid = Module["dynCall_iiid"] = createExportWrapper("dynCall_iiid", 4);
-
 var dynCall_iiij = Module["dynCall_iiij"] = createExportWrapper("dynCall_iiij", 5);
-
-var dynCall_dii = Module["dynCall_dii"] = createExportWrapper("dynCall_dii", 3);
 
 var dynCall_jii = Module["dynCall_jii"] = createExportWrapper("dynCall_jii", 3);
 
 var dynCall_ji = Module["dynCall_ji"] = createExportWrapper("dynCall_ji", 2);
 
-var dynCall_vid = Module["dynCall_vid"] = createExportWrapper("dynCall_vid", 3);
-
 var dynCall_vij = Module["dynCall_vij"] = createExportWrapper("dynCall_vij", 4);
-
-var dynCall_iiiiiiiiii = Module["dynCall_iiiiiiiiii"] = createExportWrapper("dynCall_iiiiiiiiii", 10);
-
-var dynCall_di = Module["dynCall_di"] = createExportWrapper("dynCall_di", 2);
 
 var dynCall_iiiiijii = Module["dynCall_iiiiijii"] = createExportWrapper("dynCall_iiiiijii", 9);
 
@@ -5946,21 +6037,13 @@ var dynCall_iiiijii = Module["dynCall_iiiijii"] = createExportWrapper("dynCall_i
 
 var dynCall_ij = Module["dynCall_ij"] = createExportWrapper("dynCall_ij", 3);
 
-var dynCall_v = Module["dynCall_v"] = createExportWrapper("dynCall_v", 1);
-
 var dynCall_viiji = Module["dynCall_viiji"] = createExportWrapper("dynCall_viiji", 6);
 
 var dynCall_viijii = Module["dynCall_viijii"] = createExportWrapper("dynCall_viijii", 7);
 
-var dynCall_iiiiiiiiiii = Module["dynCall_iiiiiiiiiii"] = createExportWrapper("dynCall_iiiiiiiiiii", 11);
-
 var dynCall_iiiijji = Module["dynCall_iiiijji"] = createExportWrapper("dynCall_iiiijji", 9);
 
-var dynCall_iiiiiiii = Module["dynCall_iiiiiiii"] = createExportWrapper("dynCall_iiiiiiii", 8);
-
-var dynCall_viiiii = Module["dynCall_viiiii"] = createExportWrapper("dynCall_viiiii", 6);
-
-var _sqlite3_version = Module["_sqlite3_version"] = 86128;
+var _sqlite3_version = Module["_sqlite3_version"] = 617752;
 
 // include: postamble.js
 // === Auto-generated postamble setup entry stuff ===
@@ -6002,7 +6085,7 @@ var missingLibrarySymbols = [ "writeI53ToI64", "writeI53ToI64Clamped", "writeI53
 
 missingLibrarySymbols.forEach(missingLibrarySymbol);
 
-var unexportedSymbols = [ "run", "addOnPreRun", "addOnInit", "addOnPreMain", "addOnExit", "addOnPostRun", "addRunDependency", "removeRunDependency", "out", "err", "callMain", "abort", "wasmMemory", "wasmExports", "writeStackCookie", "checkStackCookie", "readI53FromI64", "convertI32PairToI53Checked", "stackSave", "stackRestore", "stackAlloc", "ptrToString", "zeroMemory", "exitJS", "getHeapMax", "growMemory", "ENV", "ERRNO_CODES", "strError", "DNS", "Protocols", "Sockets", "timers", "warnOnce", "readEmAsmArgsArray", "jstoi_s", "getExecutableName", "handleException", "keepRuntimeAlive", "runtimeKeepalivePush", "runtimeKeepalivePop", "callUserCallback", "maybeExit", "asyncLoad", "alignMemory", "mmapAlloc", "wasmTable", "noExitRuntime", "getCFunc", "uleb128Encode", "sigToWasmTypes", "generateFuncType", "convertJsFunctionToWasm", "freeTableIndexes", "functionsInTableMap", "getEmptyTableSlot", "updateTableMap", "getFunctionAddress", "unSign", "PATH", "PATH_FS", "UTF8Decoder", "UTF8ArrayToString", "stringToUTF8Array", "stringToAscii", "UTF16Decoder", "stringToUTF8OnStack", "JSEvents", "specialHTMLTargets", "findCanvasEventTarget", "currentFullscreenStrategy", "restoreOldWindowedStyle", "UNWIND_CACHE", "ExitStatus", "getEnvStrings", "doReadv", "doWritev", "initRandomFill", "randomFill", "promiseMap", "uncaughtExceptionCount", "exceptionLast", "exceptionCaught", "Browser", "getPreloadedImageData__data", "wget", "MONTH_DAYS_REGULAR", "MONTH_DAYS_LEAP", "MONTH_DAYS_REGULAR_CUMULATIVE", "MONTH_DAYS_LEAP_CUMULATIVE", "isLeapYear", "ydayFromDate", "SYSCALLS", "preloadPlugins", "FS_createPreloadedFile", "FS_modeStringToFlags", "FS_getMode", "FS_stdin_getChar_buffer", "FS_stdin_getChar", "FS_createPath", "FS_createDevice", "FS_readFile", "FS", "FS_createDataFile", "FS_createLazyFile", "MEMFS", "TTY", "PIPEFS", "SOCKFS", "tempFixedLengthArray", "miniTempWebGLFloatBuffers", "miniTempWebGLIntBuffers", "GL", "AL", "GLUT", "EGL", "GLEW", "IDBStore", "runAndAbortIfError", "Asyncify", "Fibers", "SDL", "SDL_gfx", "allocateUTF8", "allocateUTF8OnStack", "print", "printErr", "adapters_support" ];
+var unexportedSymbols = [ "run", "addOnPreRun", "addOnInit", "addOnPreMain", "addOnExit", "addOnPostRun", "addRunDependency", "removeRunDependency", "out", "err", "callMain", "abort", "wasmMemory", "wasmExports", "writeStackCookie", "checkStackCookie", "readI53FromI64", "convertI32PairToI53Checked", "stackSave", "stackRestore", "stackAlloc", "ptrToString", "zeroMemory", "exitJS", "getHeapMax", "growMemory", "ENV", "setStackLimits", "ERRNO_CODES", "strError", "DNS", "Protocols", "Sockets", "timers", "warnOnce", "readEmAsmArgsArray", "jstoi_s", "getExecutableName", "handleException", "keepRuntimeAlive", "runtimeKeepalivePush", "runtimeKeepalivePop", "callUserCallback", "maybeExit", "asyncLoad", "alignMemory", "mmapAlloc", "wasmTable", "noExitRuntime", "getCFunc", "uleb128Encode", "sigToWasmTypes", "generateFuncType", "convertJsFunctionToWasm", "freeTableIndexes", "functionsInTableMap", "getEmptyTableSlot", "updateTableMap", "getFunctionAddress", "unSign", "PATH", "PATH_FS", "UTF8Decoder", "UTF8ArrayToString", "stringToUTF8Array", "stringToAscii", "UTF16Decoder", "stringToUTF8OnStack", "JSEvents", "specialHTMLTargets", "findCanvasEventTarget", "currentFullscreenStrategy", "restoreOldWindowedStyle", "UNWIND_CACHE", "ExitStatus", "getEnvStrings", "doReadv", "doWritev", "initRandomFill", "randomFill", "promiseMap", "uncaughtExceptionCount", "exceptionLast", "exceptionCaught", "Browser", "getPreloadedImageData__data", "wget", "MONTH_DAYS_REGULAR", "MONTH_DAYS_LEAP", "MONTH_DAYS_REGULAR_CUMULATIVE", "MONTH_DAYS_LEAP_CUMULATIVE", "isLeapYear", "ydayFromDate", "SYSCALLS", "preloadPlugins", "FS_createPreloadedFile", "FS_modeStringToFlags", "FS_getMode", "FS_stdin_getChar_buffer", "FS_stdin_getChar", "FS_createPath", "FS_createDevice", "FS_readFile", "FS", "FS_createDataFile", "FS_createLazyFile", "MEMFS", "TTY", "PIPEFS", "SOCKFS", "tempFixedLengthArray", "miniTempWebGLFloatBuffers", "miniTempWebGLIntBuffers", "GL", "AL", "GLUT", "EGL", "GLEW", "IDBStore", "runAndAbortIfError", "Asyncify", "Fibers", "SDL", "SDL_gfx", "allocateUTF8", "allocateUTF8OnStack", "print", "printErr", "adapters_support" ];
 
 unexportedSymbols.forEach(unexportedRuntimeSymbol);
 
