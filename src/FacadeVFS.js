@@ -231,6 +231,23 @@ export class FacadeVFS extends VFS.Base {
   }
 
   /**
+   * Gets the current time as milliseconds since Unix epoch
+   * @param {number} pVfs pointer to the VFS
+   * @param {number} pTime pointer to write the time value
+   * @returns {number} SQLite error code
+   */
+  xCurrentTimeInt64(pVfs, pTime) {
+    // Create a DataView to write the current time
+    const timeView = this.#makeTypedDataView('BigInt64', pTime);
+    // Get current time in milliseconds since Unix epoch
+    const currentTime = BigInt(Date.now());
+    // Write the time value to the pointer location
+    // SQLite expects little-endian format
+    timeView.setBigInt64(0, currentTime, true);
+    return VFS.SQLITE_OK;
+  }
+
+  /**
    * @param {number} pVfs 
    * @param {number} zName 
    * @param {number} syncDir 
