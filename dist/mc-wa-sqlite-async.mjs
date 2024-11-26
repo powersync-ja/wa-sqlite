@@ -6328,7 +6328,7 @@ var _asyncify_start_rewind = createExportWrapper("asyncify_start_rewind", 1);
 
 var _asyncify_stop_rewind = createExportWrapper("asyncify_stop_rewind", 0);
 
-var _sqlite3_version = Module["_sqlite3_version"] = 619560;
+var _sqlite3_version = Module["_sqlite3_version"] = 619416;
 
 // include: postamble.js
 // === Auto-generated postamble setup entry stuff ===

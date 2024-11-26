@@ -5921,7 +5921,7 @@ var dynCall_viijii = Module["dynCall_viijii"] = createExportWrapper("dynCall_vii
 
 var dynCall_iiiijji = Module["dynCall_iiiijji"] = createExportWrapper("dynCall_iiiijji", 9);
 
-var _sqlite3_version = Module["_sqlite3_version"] = 619560;
+var _sqlite3_version = Module["_sqlite3_version"] = 619416;
 
 // include: postamble.js
 // === Auto-generated postamble setup entry stuff ===
