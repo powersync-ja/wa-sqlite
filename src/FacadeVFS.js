@@ -237,7 +237,6 @@ export class FacadeVFS extends VFS.Base {
    * @returns {number} SQLite error code
    */
     xCurrentTimeInt64(pVfs, pTime) {
-      console.log('xCurrentTimeInt64');
      // Create a DataView to write the current time
      const timeView = this.#makeTypedDataView('BigInt64', pTime);
       

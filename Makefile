@@ -93,10 +93,8 @@ EMFLAGS_DEBUG = \
 	$(EMFLAGS_COMMON)
 
 EMFLAGS_DIST = \
-	-gsource-map \
-	-s ASSERTIONS=2 \
-	-s SAFE_HEAP=1 \
-	-s STACK_OVERFLOW_CHECK=2 \
+	-Oz \
+	-flto \
 	$(EMFLAGS_COMMON)
 
 # Need to export all the Main module's symbols
