@@ -128,13 +128,14 @@ maybeReset()
       const namespace = await import(config.vfsModule);
       const className = config.vfsClassName ?? config.vfsModule.match(/([^/]+)\.js$/)[1];
       const vfs = await namespace[className].create(vfsName, module, config.vfsOptions);
-      console.log('vfs', vfs);
       sqlite3.vfs_register(vfs, true);
     }
 
     if(buildName.startsWith('mc-')) {
       const createResult = module.ccall('sqlite3mc_vfs_create', 'int', ['string', 'int'], [vfsName, 1]);
-      console.log('result from creation', createResult);
+      if (createResult !== 0) {
+        throw new Error(`sqlite3mc_vfs_create failed with ${createResult}`);
+      }
     }
 
     // Open the database.
