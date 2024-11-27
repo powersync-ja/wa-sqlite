@@ -7,7 +7,6 @@ EXTENSION_FUNCTIONS = extension-functions.c
 EXTENSION_FUNCTIONS_URL = https://www.sqlite.org/contrib/download/extension-functions.c?get=25
 EXTENSION_FUNCTIONS_SHA3 = ee39ddf5eaa21e1d0ebcbceeab42822dd0c4f82d8039ce173fd4814807faabfa
 
-# TODO this requires a manaual step of extracting sqlite3mc_alamgoajhsd.c to the deps folder
 # WA-SQLite source files
 CFILES = \
 	sqlite3.c \
@@ -206,6 +205,7 @@ deps/$(SQLITE_VERSION)/sqlite3.h deps/$(SQLITE_VERSION)/sqlite3.c:
 	mkdir -p deps/$(SQLITE_VERSION)
 	(cd deps/$(SQLITE_VERSION); ../../cache/$(SQLITE_VERSION)/configure --enable-all && make sqlite3.c)
 
+# Download and extract sqlite3mc_amalgamation.c to the deps directory
 deps/$(SQLITE_VERSION)/sqlite3mc_amalgamation.c:
 	mkdir -p cache/sqlite3mc-$(MC_SQLITE_VERSION)
 	curl -LsS $(MC_SQLITE_URL) -o cache/sqlite3mc-$(MC_SQLITE_VERSION)/sqlite3mc.zip
