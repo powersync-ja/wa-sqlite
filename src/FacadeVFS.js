@@ -3,6 +3,9 @@ import * as VFS from './VFS.js';
 
 const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
 
+// Unix epoch in milliseconds as a BigInt.
+const UNIX_EPOCH = 24405875n * 8640000n;
+
 // Convenience base class for a JavaScript VFS.
 // The raw xOpen, xRead, etc. function signatures receive only C primitives
 // which aren't easy to work with. This class provides corresponding calls
@@ -243,11 +246,10 @@ export class FacadeVFS extends VFS.Base {
      // Exact copy of SQLite's calculation:
      // static const sqlite3_int64 unixEpoch = 24405875*(sqlite3_int64)8640000;
      // *piNow = unixEpoch + 1000*(sqlite3_int64)sNow.tv_sec + sNow.tv_usec/1000;
-     const unixEpoch = 24405875n * 8640000n;
      const seconds = BigInt(Math.floor(Date.now() / 1000));
      const microseconds = BigInt(Date.now() % 1000) * 1000n;
      
-     const value = unixEpoch + (1000n * seconds) + (microseconds / 1000n);
+     const value = UNIX_EPOCH + (1000n * seconds) + (microseconds / 1000n);
      
      // Write the time value to the pointer location
      timeView.setBigInt64(0, value, true);
