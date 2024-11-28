@@ -8,7 +8,7 @@ const BUILDS = new Map([
   ['asyncify', '../dist/wa-sqlite-async.mjs'],
   ['mc-asyncify', '../dist/mc-wa-sqlite-async.mjs'],
   ['jspi', '../dist/wa-sqlite-jspi.mjs'],
-  ['mc-jspi', '../dist/mcwa-sqlite-jspi.mjs'],
+  ['mc-jspi', '../dist/mc-wa-sqlite-jspi.mjs'],
   // ['default', '../debug/wa-sqlite.mjs'],
   // ['asyncify', '../debug/wa-sqlite-async.mjs'],
   // ['jspi', '../debug/wa-sqlite-jspi.mjs'],

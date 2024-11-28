@@ -43,11 +43,11 @@ declare interface SQLiteVFS {
   /** Maximum length of a file path in UTF-8 bytes (default 64) */
   mxPathName?: number;
 
-  close(): void | Promise<void>;
-  isReady(): boolean | Promise<boolean>;
+  close(): void|Promise<void>;
+  isReady(): boolean|Promise<boolean>;
 
   /** @see https://sqlite.org/c3ref/io_methods.html */
-  xClose(fileId: number): number | Promise<number>;
+  xClose(fileId: number): number|Promise<number>;
 
   /** @see https://sqlite.org/c3ref/io_methods.html */
   xRead(
@@ -56,7 +56,7 @@ declare interface SQLiteVFS {
     iAmt: number,
     iOffsetLo: number,
     iOffsetHi: number
-  ): number | Promise<number>;
+  ): number|Promise<number>;
 
   /** @see https://sqlite.org/c3ref/io_methods.html */
   xWrite(
@@ -65,35 +65,41 @@ declare interface SQLiteVFS {
     iAmt: number,
     iOffsetLo: number,
     iOffsetHi: number
-  ): number | Promise<number>;
+  ): number|Promise<number>;
 
   /** @see https://sqlite.org/c3ref/io_methods.html */
-  xTruncate(fileId: number, iSizeLo: number, iSizeHi): number | Promise<number>;
+  xTruncate(fileId: number, iSizeLo: number, iSizeHi): number|Promise<number>;
 
   /** @see https://sqlite.org/c3ref/io_methods.html */
-  xSync(fileId: number, flags: number): number | Promise<number>;
+  xSync(fileId: number, flags: number): number|Promise<number>;
 
   /** @see https://sqlite.org/c3ref/io_methods.html */
-  xFileSize(fileId: number, pSize64: number): number | Promise<number>;
+  xFileSize(
+    fileId: number,
+    pSize64: number
+  ): number|Promise<number>;
 
   /** @see https://sqlite.org/c3ref/io_methods.html */
-  xLock(fileId: number, flags: number): number | Promise<number>;
+  xLock(fileId: number, flags: number): number|Promise<number>;
 
   /** @see https://sqlite.org/c3ref/io_methods.html */
-  xUnlock(fileId: number, flags: number): number | Promise<number>;
+  xUnlock(fileId: number, flags: number): number|Promise<number>;
 
   /** @see https://sqlite.org/c3ref/io_methods.html */
-  xCheckReservedLock(fileId: number, pResOut: number): number | Promise<number>;
+  xCheckReservedLock(
+    fileId: number,
+    pResOut: number
+  ): number|Promise<number>;
 
   /** @see https://sqlite.org/c3ref/io_methods.html */
   xFileControl(
     fileId: number,
     flags: number,
     pOut: number
-  ): number | Promise<number>;
+  ): number|Promise<number>;
 
   /** @see https://sqlite.org/c3ref/io_methods.html */
-  xDeviceCharacteristics(fileId: number): number | Promise<number>;
+  xDeviceCharacteristics(fileId: number): number|Promise<number>;
 
   /** @see https://sqlite.org/c3ref/vfs.html */
   xOpen(
@@ -102,14 +108,10 @@ declare interface SQLiteVFS {
     pFile: number,
     flags: number,
     pOutFlags: number
-  ): number | Promise<number>;
+  ): number|Promise<number>;
 
   /** @see https://sqlite.org/c3ref/vfs.html */
-  xDelete(
-    pVfs: number,
-    zName: number,
-    syncDir: number
-  ): number | Promise<number>;
+  xDelete(pVfs: number, zName: number, syncDir: number): number|Promise<number>;
 
   /** @see https://sqlite.org/c3ref/vfs.html */
   xAccess(
@@ -117,7 +119,7 @@ declare interface SQLiteVFS {
     zName: number,
     flags: number,
     pResOut: number
-  ): number | Promise<number>;
+  ): number|Promise<number>;
 }
 
 /**
@@ -474,20 +476,22 @@ declare interface SQLiteAPI {
 
   /**
    * Register a commit hook
-   *
+   * 
    * @see https://www.sqlite.org/c3ref/commit_hook.html
    *
    * @param db database pointer
    * @param callback If a non-zero value is returned, commit is converted into
    * a rollback; disables callback when null
    */
-  commit_hook(db: number, callback: (() => number) | null): void;
+  commit_hook(
+    db: number,
+    callback: (() => number) | null): void;
 
   /**
    * Create or redefine SQL functions
-   *
+   * 
    * The application data passed is ignored. Use closures instead.
-   *
+   * 
    * If any callback function returns a Promise, that function must
    * be declared `async`, i.e. it must allow use of `await`.
    * @see https://sqlite.org/c3ref/create_function.html
@@ -496,9 +500,9 @@ declare interface SQLiteAPI {
    * @param nArg number of function arguments
    * @param eTextRep text encoding (and other flags)
    * @param pApp application data (ignored)
-   * @param xFunc
-   * @param xStep
-   * @param xFinal
+   * @param xFunc 
+   * @param xStep 
+   * @param xFinal 
    * @returns `SQLITE_OK` (throws exception on error)
    */
   create_function(
@@ -507,10 +511,9 @@ declare interface SQLiteAPI {
     nArg: number,
     eTextRep: number,
     pApp: number,
-    xFunc?: (context: number, values: Uint32Array) => void | Promise<void>,
-    xStep?: (context: number, values: Uint32Array) => void | Promise<void>,
-    xFinal?: (context: number) => void | Promise<void>
-  ): number;
+    xFunc?: (context: number, values: Uint32Array) => void|Promise<void>,
+    xStep?: (context: number, values: Uint32Array) => void|Promise<void>,
+    xFinal?: (context: number) => void|Promise<void>): number;
 
   /**
    * Get number of columns in current row of a prepared statement
@@ -544,7 +547,7 @@ declare interface SQLiteAPI {
   /**
    * Destroy a prepared statement object compiled by {@link statements}
    * with the `unscoped` option set to `true`
-   *
+   * 
    * This function does *not* throw on error.
    * @see https://www.sqlite.org/c3ref/finalize.html
    * @param stmt prepared statement pointer
@@ -600,9 +603,9 @@ declare interface SQLiteAPI {
 
   /**
    * Specify callback to be invoked between long-running queries
-   *
+   * 
    * The application data passed is ignored. Use closures instead.
-   *
+   * 
    * If any callback function returns a Promise, that function must
    * be declared `async`, i.e. it must allow use of `await`.
    * @param db database pointer
@@ -610,12 +613,7 @@ declare interface SQLiteAPI {
    * @param handler
    * @param userData
    */
-  progress_handler(
-    db: number,
-    nProgressOps: number,
-    handler: (userData: any) => number | Promise<number>,
-    userData
-  );
+  progress_handler(db: number, nProgressOps: number, handler: (userData: any) => number|Promise<number>, userData);
 
   /**
    * Reset a prepared statement object
@@ -703,17 +701,9 @@ declare interface SQLiteAPI {
    */
   set_authorizer(
     db: number,
-    authFunction: (
-      userData: any,
-      iActionCode: number,
-      param3: string | null,
-      param4: string | null,
-      param5: string | null,
-      param6: string | null
-    ) => number | Promise<number>,
-    userData: any
-  ): number;
-
+    authFunction: (userData: any, iActionCode: number, param3: string|null, param4: string|null, param5: string|null, param6: string|null) => number|Promise<number>,
+    userData: any): number;
+  
   /**
    * Get statement SQL
    * @see https://www.sqlite.org/c3ref/expanded_sql.html
@@ -724,7 +714,7 @@ declare interface SQLiteAPI {
 
   /**
    * SQL statement iterator
-   *
+   * 
    * This function manages statement compilation by creating an async
    * iterator that yields a prepared statement handle on each iteration.
    * It is typically used with a `for await` loop (in an async function),
@@ -742,14 +732,14 @@ declare interface SQLiteAPI {
    *   // Change bindings, reset, and execute again if desired.
    * }
    * ```
-   *
+   * 
    * By default, the lifetime of a yielded prepared statement is managed
    * automatically by the iterator, ending at the end of each iteration.
    * {@link finalize} should *not* be called on a statement provided by
    * the iterator unless the `unscoped` option is set to `true` (that
    * option is provided for applications that wish to manage statement
    * lifetimes manually).
-   *
+   * 
    * If using the iterator manually, i.e. by calling its `next`
    * method, be sure to call the `return` method if iteration
    * is abandoned before completion (`for await` and other implicit
@@ -757,14 +747,10 @@ declare interface SQLiteAPI {
    * to ensure that all allocated resources are released.
    * @see https://www.sqlite.org/c3ref/prepare.html
    * @param db database pointer
-   * @param sql
+   * @param sql 
    * @param options
    */
-  statements(
-    db: number,
-    sql: string,
-    options?: SQLitePrepareOptions
-  ): AsyncIterable<number>;
+  statements(db: number, sql: string, options?: SQLitePrepareOptions): AsyncIterable<number>;
 
   /**
    * Evaluate an SQL statement
@@ -775,9 +761,9 @@ declare interface SQLiteAPI {
    */
   step(stmt: number): Promise<number>;
 
-  /**
+   /**
    * Register an update hook
-   *
+   * 
    * The callback is invoked whenever a row is updated, inserted, or deleted
    * in a rowid table on this connection.
    * @see https://www.sqlite.org/c3ref/update_hook.html
@@ -787,19 +773,13 @@ declare interface SQLiteAPI {
    * - SQLITE_INSERT: 18
    * - SQLITE_UPDATE: 23
    * @see https://www.sqlite.org/c3ref/c_alter_table.html
-   *
+   * 
    * @param db database pointer
    * @param callback
    */
-  update_hook(
+   update_hook(
     db: number,
-    callback: (
-      updateType: number,
-      dbName: string | null,
-      tblName: string | null,
-      rowid: bigint
-    ) => void
-  ): void;
+    callback: (updateType: number, dbName: string|null, tblName: string|null, rowid: bigint) => void): void;
 
   /**
    * Extract a value from `sqlite3_value`
@@ -1122,8 +1102,8 @@ declare module "@journeyapps/wa-sqlite/src/sqlite-constants.js" {
   export const SQLITE_PREPARE_NO_VTAB: 0x04;
 }
 
-declare module "@journeyapps/wa-sqlite" {
-  export * from "@journeyapps/wa-sqlite/src/sqlite-constants.js";
+declare module '@journeyapps/wa-sqlite' {
+  export * from '@journeyapps/wa-sqlite/src/sqlite-constants.js';
 
   /**
    * @ignore
@@ -1154,13 +1134,13 @@ declare module "@journeyapps/wa-sqlite/dist/wa-sqlite-async.mjs" {
 }
 
 /** @ignore */
-declare module "@journeyapps/wa-sqlite/dist/mc-wa-sqlite-async.mjs" {
+declare module "@journeyapps/wa-sqlite/dist/mc-wa-sqlite.mjs" {
   function ModuleFactory(config?: object): Promise<any>;
   export = ModuleFactory;
 }
 
 /** @ignore */
-declare module "@journeyapps/wa-sqlite/dist/mc-wa-sqlite.mjs" {
+declare module "@journeyapps/wa-sqlite/dist/mc-wa-sqlite-async.mjs" {
   function ModuleFactory(config?: object): Promise<any>;
   export = ModuleFactory;
 }
@@ -1281,7 +1261,7 @@ declare module "@journeyapps/wa-sqlite/src/VFS.js" {
 }
 
 /** @ignore */
-declare module "@journeyapps/wa-sqlite/src/examples/IndexedDbVFS.js" {
+declare module '@journeyapps/wa-sqlite/src/examples/IndexedDbVFS.js' {
   import * as VFS from "@journeyapps/wa-sqlite/src/VFS.js";
   export class IndexedDbVFS extends VFS.Base {
     /**
@@ -1334,7 +1314,7 @@ declare module "@journeyapps/wa-sqlite/src/examples/IndexedDbVFS.js" {
 }
 
 /** @ignore */
-declare module "@journeyapps/wa-sqlite/src/examples/IDBBatchAtomicVFS.js" {
+declare module '@journeyapps/wa-sqlite/src/examples/IDBBatchAtomicVFS.js' {
   import * as VFS from "@journeyapps/wa-sqlite/src/VFS.js";
   export class IDBBatchAtomicVFS extends VFS.Base {
     /**
@@ -1387,7 +1367,7 @@ declare module "@journeyapps/wa-sqlite/src/examples/IDBBatchAtomicVFS.js" {
 }
 
 /** @ignore */
-declare module "@journeyapps/wa-sqlite/src/examples/MemoryVFS.js" {
+declare module '@journeyapps/wa-sqlite/src/examples/MemoryVFS.js' {
   import * as VFS from "@journeyapps/wa-sqlite/src/VFS.js";
   /** @ignore */
   export class MemoryVFS extends VFS.Base {
