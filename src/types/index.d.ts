@@ -1134,6 +1134,18 @@ declare module "@journeyapps/wa-sqlite/dist/wa-sqlite-async.mjs" {
 }
 
 /** @ignore */
+declare module "@journeyapps/wa-sqlite/dist/mc-wa-sqlite.mjs" {
+  function ModuleFactory(config?: object): Promise<any>;
+  export = ModuleFactory;
+}
+
+/** @ignore */
+declare module "@journeyapps/wa-sqlite/dist/mc-wa-sqlite-async.mjs" {
+  function ModuleFactory(config?: object): Promise<any>;
+  export = ModuleFactory;
+}
+
+/** @ignore */
 declare module "@journeyapps/wa-sqlite/src/VFS.js" {
   export * from "@journeyapps/wa-sqlite/src/sqlite-constants.js";
 
