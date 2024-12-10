@@ -3,7 +3,8 @@ import * as VFS from './VFS.js';
 
 const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
 
-// Unix epoch in milliseconds as a BigInt.
+// Milliseconds since Julian epoch as a BigInt.
+// https://github.com/sqlite/sqlite/blob/e57527c14f7b7cfa6e32eeab5c549d50c4fa3674/src/os_unix.c#L6872-L6882
 const UNIX_EPOCH = 24405875n * 8640000n;
 
 // Convenience base class for a JavaScript VFS.
