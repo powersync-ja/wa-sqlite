@@ -1,5 +1,11 @@
 # @journeyapps/wa-sqlite
 
+## 1.1.0
+
+### Minor Changes
+
+- 7536ead: Enable database encryption with multiple ciphers
+
 ## 1.0.0
 
 ### Major Changes
