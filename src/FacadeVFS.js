@@ -3,6 +3,10 @@ import * as VFS from './VFS.js';
 
 const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
 
+// Milliseconds since Julian epoch as a BigInt.
+// https://github.com/sqlite/sqlite/blob/e57527c14f7b7cfa6e32eeab5c549d50c4fa3674/src/os_unix.c#L6872-L6882
+const UNIX_EPOCH = 24405875n * 8640000n;
+
 // Convenience base class for a JavaScript VFS.
 // The raw xOpen, xRead, etc. function signatures receive only C primitives
 // which aren't easy to work with. This class provides corresponding calls
@@ -213,6 +217,41 @@ export class FacadeVFS extends VFS.Base {
     const pOutFlagsView = this.#makeTypedDataView('Int32', pOutFlags);
     this['log']?.('jOpen', filename, pFile, '0x' + flags.toString(16));
     return this.jOpen(filename, pFile, flags, pOutFlagsView);
+  }
+
+  /**
+   * @param {number} pVfs 
+   * @param {number} nByte 
+   * @param {number} pCharOut
+   * @returns {number|Promise<number>}
+   */
+  xRandomness(pVfs, nByte, pCharOut) {
+    const randomArray = new Uint8Array(nByte);
+    crypto.getRandomValues(randomArray);
+    // Copy randomArray to the WebAssembly memory
+    const buffer = pCharOut; // Pointer to memory in WebAssembly
+    this._module.HEAPU8.set(randomArray, buffer); // Copy randomArray into memory starting at buffer
+    return nByte;
+  }
+
+  /**
+   * Gets the current time as milliseconds since Unix epoch
+   * @param {number} pVfs pointer to the VFS
+   * @param {number} pTime pointer to write the time value
+   * @returns {number} SQLite error code
+   */
+  xCurrentTimeInt64(pVfs, pTime) {
+    // Create a DataView to write the current time
+    const timeView = this.#makeTypedDataView('BigInt64', pTime);
+  
+    const currentTime = BigInt(Date.now());
+    // Convert the current time to milliseconds since Unix epoch
+    const value = UNIX_EPOCH + currentTime;
+    
+    // Write the time value to the pointer location
+    timeView.setBigInt64(0, value, true);
+    
+    return VFS.SQLITE_OK;
   }
 
   /**

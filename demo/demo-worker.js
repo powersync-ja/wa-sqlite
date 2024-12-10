@@ -4,8 +4,11 @@ import * as SQLite from '../src/sqlite-api.js';
 
 const BUILDS = new Map([
   ['default', '../dist/wa-sqlite.mjs'],
+  ['mc-default', '../dist/mc-wa-sqlite.mjs'],
   ['asyncify', '../dist/wa-sqlite-async.mjs'],
+  ['mc-asyncify', '../dist/mc-wa-sqlite-async.mjs'],
   ['jspi', '../dist/wa-sqlite-jspi.mjs'],
+  ['mc-jspi', '../dist/mc-wa-sqlite-jspi.mjs'],
   // ['default', '../debug/wa-sqlite.mjs'],
   // ['asyncify', '../debug/wa-sqlite-async.mjs'],
   // ['jspi', '../debug/wa-sqlite-jspi.mjs'],
@@ -103,7 +106,6 @@ maybeReset().then(async () => {
 
   const sqlite3 = SQLite.Factory(module);
 
-
   if (buildName.endsWith('-dynamic')) {
     const extWasm = EXT_WASM.get(buildName);
     // Load the extension library into this scope
@@ -130,6 +132,12 @@ maybeReset().then(async () => {
     sqlite3.vfs_register(vfs, true);
   }
 
+  if(buildName.startsWith('mc-')) {
+    const createResult = module.ccall('sqlite3mc_vfs_create', 'int', ['string', 'int'], [vfsName, 1]);
+    if (createResult !== 0) {
+      throw new Error(`sqlite3mc_vfs_create failed with ${createResult}`);
+    }
+  }
   // Open the database.
   const db = await sqlite3.open_v2(dbName);
 
