@@ -1,5 +1,11 @@
 # @journeyapps/wa-sqlite
 
+## 1.1.1
+
+### Patch Changes
+
+- a2693c6: powersync-sqlite-core 0.3.7; sqlite 3.47.2
+
 ## 1.1.0
 
 ### Minor Changes
