@@ -1,6 +1,6 @@
 # dependencies
-SQLITE_VERSION = 3.47.0
-MC_SQLITE_VERSION = 1.9.0
+SQLITE_VERSION = 3.47.2
+MC_SQLITE_VERSION = 1.9.2
 SQLITE_TARBALL_URL = https://www.sqlite.org/src/tarball/sqlite.tar.gz?r=version-${SQLITE_VERSION}
 MC_SQLITE_URL = https://github.com/utelle/SQLite3MultipleCiphers/releases/download/v${MC_SQLITE_VERSION}/sqlite3mc-${MC_SQLITE_VERSION}-sqlite-${SQLITE_VERSION}-amalgamation.zip
 EXTENSION_FUNCTIONS = extension-functions.c
