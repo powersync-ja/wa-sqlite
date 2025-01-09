@@ -1,5 +1,11 @@
 # @journeyapps/wa-sqlite
 
+## 1.2.0
+
+### Minor Changes
+
+- 9d9e03c: powersync-sqlite-core 0.3.8: Support 1999 columns per table
+
 ## 1.1.1
 
 ### Patch Changes
