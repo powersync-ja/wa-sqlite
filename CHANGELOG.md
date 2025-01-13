@@ -1,5 +1,11 @@
 # @journeyapps/wa-sqlite
 
+## 1.2.1
+
+### Patch Changes
+
+- 3980a48: Reflect correct feature status in Readme
+
 ## 1.2.0
 
 ### Minor Changes
