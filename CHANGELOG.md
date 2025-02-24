@@ -1,5 +1,12 @@
 # @journeyapps/wa-sqlite
 
+## 1.2.1
+
+### Patch Changes
+
+- 3980a48: Reflect correct feature status in Readme
+- 5b49db8: Update core extension to 0.3.11, supporting bucket priorities.
+
 ## 1.2.0
 
 ### Minor Changes
