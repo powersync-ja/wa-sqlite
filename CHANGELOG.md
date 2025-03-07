@@ -1,5 +1,11 @@
 # @journeyapps/wa-sqlite
 
+## 1.2.2
+
+### Patch Changes
+
+- 36d6cd5: Update core PowerSync extension to 0.3.12
+
 ## 1.2.1
 
 ### Patch Changes
