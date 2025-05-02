@@ -1,5 +1,11 @@
 # @journeyapps/wa-sqlite
 
+## 1.2.4
+
+### Patch Changes
+
+- 54ad303: Fix issue where OPFS VFS could freeze in infinite loop
+
 ## 1.2.3
 
 ### Patch Changes
