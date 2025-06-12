@@ -1,11 +1,11 @@
 # dependencies
-SQLITE_VERSION = 3.47.2
-MC_SQLITE_VERSION = 1.9.2
+SQLITE_VERSION = 3.50.1
+MC_SQLITE_VERSION = 2.1.3
 SQLITE_TARBALL_URL = https://www.sqlite.org/src/tarball/sqlite.tar.gz?r=version-${SQLITE_VERSION}
 MC_SQLITE_URL = https://github.com/utelle/SQLite3MultipleCiphers/releases/download/v${MC_SQLITE_VERSION}/sqlite3mc-${MC_SQLITE_VERSION}-sqlite-${SQLITE_VERSION}-amalgamation.zip
 EXTENSION_FUNCTIONS = extension-functions.c
 EXTENSION_FUNCTIONS_URL = https://www.sqlite.org/contrib/download/extension-functions.c?get=25
-EXTENSION_FUNCTIONS_SHA3 = ee39ddf5eaa21e1d0ebcbceeab42822dd0c4f82d8039ce173fd4814807faabfa
+EXTENSION_FUNCTIONS_SHA3 = 3f5872317c2f8d729aafc1e54c40768fe1214ad1bbbb601d2d432aaa13ebf64a
 
 # WA-SQLite source files
 CFILES = \
