@@ -212,7 +212,7 @@ deps/$(SQLITE_VERSION)/sqlite3mc_amalgamation.c:
 	cp cache/sqlite3mc-$(MC_SQLITE_VERSION)/sqlite3mc_amalgamation.c deps/$(SQLITE_VERSION)/sqlite3mc_amalgamation.c
 
 # Download static files from PowerSync Core repository
-$(POWERSYNC_STATIC_FILES):
+$(POWERSYNC_STATIC_FILES): powersync-version scripts/download-core-build.js
 	node scripts/download-core-build.js
 
 ifeq ($(shell uname), Darwin)
