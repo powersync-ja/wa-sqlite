@@ -1,5 +1,17 @@
 # @journeyapps/wa-sqlite
 
+## 1.3.0
+
+### Minor Changes
+
+- 8d01b17: Updated from upstream:
+
+  - Replace Facade Proxy with handwritten proxy.
+
+### Patch Changes
+
+- 9ea2966: Update core extension to 0.4.4
+
 ## 1.2.6
 
 ### Patch Changes
