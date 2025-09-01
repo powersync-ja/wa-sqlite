@@ -704,7 +704,7 @@ export class IDBContext {
         // The current transaction is missing or doesn't match so
         // replace it with a new one. wait for the previous
         // transaction to complete so the lifetimes do not overlap.
-        await this.#txComplete;
+        await this.#txComplete.catch(() => {});
 
         // Create the new transaction.
         // @ts-ignore
