@@ -1,5 +1,11 @@
 # @journeyapps/wa-sqlite
 
+## 1.3.3
+
+### Patch Changes
+
+- 1f30a05: Update PowerSync SQLite extension to version 0.4.8
+
 ## 1.3.2
 
 ### Patch Changes
