@@ -1,5 +1,11 @@
 # @journeyapps/wa-sqlite
 
+## 1.3.4
+
+### Patch Changes
+
+- fac9a43: Update upstream to [v1.0.9](https://github.com/rhashimoto/wa-sqlite/releases/tag/v1.0.9)
+
 ## 1.3.3
 
 ### Patch Changes
