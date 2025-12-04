@@ -519,17 +519,31 @@ export class OPFSCoopSyncVFS extends FacadeVFS {
       this._module.retryOps.push((async () => {
         // Acquire the Web Lock.
         file.persistentFile.handleLockReleaser = await this.#acquireLock(file.persistentFile);
-
-        // Get access handles for the database and releated files in parallel.
-        this.log?.(`creating access handles for ${file.path}`)
-        await Promise.all(DB_RELATED_FILE_SUFFIXES.map(async suffix => {
-          const persistentFile = this.persistentFiles.get(file.path + suffix);
-          if (persistentFile) {
-            persistentFile.accessHandle =
-              await persistentFile.fileHandle.createSyncAccessHandle();
-          }
-        }));
-        file.persistentFile.isRequestInProgress = false;
+        try {
+          // Get access handles for the database and releated files in parallel.
+          this.log?.(`creating access handles for ${file.path}`)
+          await Promise.all(DB_RELATED_FILE_SUFFIXES.map(async suffix => {
+            const persistentFile = this.persistentFiles.get(file.path + suffix);
+            if (persistentFile) {
+              persistentFile.accessHandle =
+                await persistentFile.fileHandle.createSyncAccessHandle();
+            }
+          }));
+        } catch (e) {
+          this.log?.(`failed to create access handles for ${file.path}`, e);
+          // Close any of the potentially opened access handles
+          DB_RELATED_FILE_SUFFIXES.forEach(async suffix => {
+            const persistentFile = this.persistentFiles.get(file.path + suffix);
+            if (persistentFile) {
+              persistentFile.accessHandle?.close();
+            }
+          });
+          // Release the lock, if we failed here, we'd need to obtain the lock later in order to retry
+          file.persistentFile.handleLockReleaser();
+          throw e;
+        } finally {
+          file.persistentFile.isRequestInProgress = false;
+        }
       })());
       return this._module.retryOps.at(-1);
     }
