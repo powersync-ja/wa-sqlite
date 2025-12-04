@@ -540,6 +540,7 @@ export class OPFSCoopSyncVFS extends FacadeVFS {
           });
           // Release the lock, if we failed here, we'd need to obtain the lock later in order to retry
           file.persistentFile.handleLockReleaser();
+          file.persistentFile.handleLockReleaser = null;
           throw e;
         } finally {
           file.persistentFile.isRequestInProgress = false;
