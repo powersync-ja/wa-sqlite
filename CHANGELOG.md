@@ -1,5 +1,15 @@
 # @journeyapps/wa-sqlite
 
+## 1.4.0
+
+### Minor Changes
+
+- 60c4f54: Update PowerSync core to v0.4.10
+
+### Patch Changes
+
+- 82eb502: Fix potential deadlocks and Failed to execute 'createSyncAccessHandle' on 'FileSystemFileHandle' errors.
+
 ## 1.3.4
 
 ### Patch Changes
