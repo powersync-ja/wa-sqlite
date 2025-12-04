@@ -35,6 +35,7 @@ class PersistentFile {
 
   /** @type {BroadcastChannel} */ handleRequestChannel;
   /** @type {boolean} */ isHandleRequested = false;
+  /** @type {boolean} */ pendingLockRelease = false;
 
   constructor(fileHandle) {
     this.fileHandle = fileHandle;
@@ -52,9 +53,11 @@ export class OPFSCoopSyncVFS extends FacadeVFS {
   /** @type {Set<FileSystemSyncAccessHandle>} */ unboundAccessHandles = new Set();
   /** @type {Set<string>} */ accessiblePaths = new Set();
   releaser = null;
+  /** @type {boolean} */ alwaysReleaseLockOnUnlock = false;
 
-  static async create(name, module) {
+  static async create(name, module, options = {}) {
     const vfs = new OPFSCoopSyncVFS(name, module);
+    vfs.alwaysReleaseLockOnUnlock = options.alwaysReleaseLockOnUnlock ?? false;
     await Promise.all([
       vfs.isReady(),
       vfs.#initialize(DEFAULT_TEMPORARY_FILES),
@@ -390,6 +393,13 @@ export class OPFSCoopSyncVFS extends FacadeVFS {
    */
   jLock(fileId, lockType) {
     const file = this.mapIdToFile.get(fileId);
+
+    // Cancel any pending lock release if SQLite needs the lock again
+    if (file.persistentFile.pendingLockRelease) {
+      file.persistentFile.pendingLockRelease = false;
+      this.log?.(`cancelled pending lock release for ${file.path}`);
+    }
+
     if (file.persistentFile.isRequestInProgress) {
       file.persistentFile.isLockBusy = true;
       return VFS.SQLITE_BUSY;
@@ -435,9 +445,24 @@ export class OPFSCoopSyncVFS extends FacadeVFS {
       // SQLITE_BUSY.
       if (!file.persistentFile.isLockBusy) {
         if (file.persistentFile.isHandleRequested) {
-            // Another connection wants the access handle.
+          // Another connection wants the access handle.
           this.#releaseAccessHandle(file);
           file.persistentFile.isHandleRequested = false;
+        } else if (this.alwaysReleaseLockOnUnlock && file.persistentFile.handleLockReleaser) {
+          // Optionally release the lock even when not requested.
+          // Schedule the release asynchronously so that if SQLite immediately
+          // calls jLock, it can cancel it synchronously.
+          file.persistentFile.pendingLockRelease = true;
+          // Use queueMicrotask to schedule the release, which allows jLock
+          // to cancel it synchronously if called in the same event loop
+          queueMicrotask(() => {
+            // Only release if SQLite hasn't requested the lock again
+            if (file.persistentFile.pendingLockRelease && !file.persistentFile.isFileLocked) {
+              this.log?.(`releasing lock on unlock for ${file.path}`);
+              this.#releaseAccessHandle(file);
+            }
+            file.persistentFile.pendingLockRelease = false;
+          });
         }
         file.persistentFile.isFileLocked = false;
       }
@@ -555,6 +580,9 @@ export class OPFSCoopSyncVFS extends FacadeVFS {
    * @param {File} file 
    */
   async #releaseAccessHandle(file) {
+    // Clear any pending release
+    file.persistentFile.pendingLockRelease = false;
+
     DB_RELATED_FILE_SUFFIXES.forEach(async suffix => {
       const persistentFile = this.persistentFiles.get(file.path + suffix);
       if (persistentFile) {
