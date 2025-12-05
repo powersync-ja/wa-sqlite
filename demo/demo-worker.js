@@ -62,6 +62,10 @@ const BUILDS = new Map([
     vfsModule: '../src/examples/OPFSPermutedVFS.js',
   },
   {
+    name: 'OPFSWriteAheadVFS',
+    vfsModule: '../src/examples/OPFSWriteAheadVFS.js',
+  },
+  {
     name: 'AccessHandlePoolVFS',
     vfsModule: '../src/examples/AccessHandlePoolVFS.js',
   },
