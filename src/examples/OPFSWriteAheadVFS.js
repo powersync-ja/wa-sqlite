@@ -132,13 +132,19 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
    */
   jAccess(zName, flags, pResOut) {
     try {
-      if (this.mapPathToFile.has(zName)) {
-        pResOut.setInt32(0, 1, true);
-        return VFS.SQLITE_OK;
+      const file = this.mapPathToFile.get(zName);
+      if (file) {
+        if ((file.flags & VFS.SQLITE_OPEN_MAIN_JOURNAL) &&
+            file.accessHandle.getSize() === 0) {
+          // Treat an empty journal file as non-existent.
+          pResOut.setInt32(0, 0, true);
+        } else {
+          pResOut.setInt32(0, 1, true);
+        }
       } else {
         pResOut.setInt32(0, 0, true);
-        return VFS.SQLITE_OK;
       }
+      return VFS.SQLITE_OK;
     } catch (e) {
       this.lastError = e;
       return VFS.SQLITE_IOERR_ACCESS;
