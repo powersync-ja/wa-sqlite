@@ -1,17 +1,23 @@
 // This is a convenience wrapper for the Web Locks API.
 export class Lock {
-  name;
-  /** @type {LockMode?} */ mode = null;
-
+  #name;
+  /** @type {LockMode?} */ #mode = null;
   #releaser = null;
 
   /**
    * @param {string} name 
    */
   constructor(name) {
-    this.name = name;
+    this.#name = name;
   }
 
+  get name() { return this.#name; }
+  get mode() { return this.#mode; }
+
+  close() {
+    this.release();
+  }
+  
   /**
    * @param {'shared'|'exclusive'} mode 
    * @param {number} timeout -1 for infinite, 0 for poll, >0 for milliseconds
@@ -19,7 +25,7 @@ export class Lock {
    */
   async acquire(mode, timeout = -1) {
     if (this.#releaser) {
-      throw new Error(`Lock ${this.name} is already acquired`);
+      throw new Error(`Lock ${this.#name} is already acquired`);
     }
     return new Promise((resolve, reject) => {
       /** @type {LockOptions} */
@@ -33,7 +39,7 @@ export class Lock {
         options.signal = abortController.signal;
       }
 
-      navigator.locks.request(this.name, options, lock => {
+      navigator.locks.request(this.#name, options, lock => {
         if (timeoutId) clearTimeout(timeoutId);
         if (lock === null) {
           // Polling (with timeout = 0) did not acquire the lock.
@@ -42,7 +48,7 @@ export class Lock {
 
         // Lock acquired. The lock is released when this returned
         // Promise is resolved.
-        this.mode = mode;
+        this.#mode = mode;
         return new Promise(releaser => {
           this.#releaser = releaser;
           resolve(true);
@@ -60,6 +66,6 @@ export class Lock {
   release() {
     this.#releaser?.();
     this.#releaser = null;
-    this.mode = null;
+    this.#mode = null;
   }
 }

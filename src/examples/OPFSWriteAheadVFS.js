@@ -14,6 +14,7 @@ import { LazyLock } from "./LazyLock.js";
  * @property {FileSystemSyncAccessHandle} [journalHandle]
  * 
  * @property {string} [writeHint]
+ * @property {number} [lockState]
  * @property {LazyLock} [readLock]
  * @property {Lock} [writeLock]
  * @property {number} [timeout]
@@ -74,6 +75,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
         file.journalHandle = file.retryResult.journalHandle;
         file.retryResult = null;
 
+        file.lockState = VFS.SQLITE_LOCK_NONE;
         file.readLock = new LazyLock(`${zName}-read`);
         file.writeLock = new Lock(`${zName}-write`);
         file.timeout = -1;
@@ -165,6 +167,9 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
         file.journalHandle.close();
         const journalPath = this.#getJournalPathFromDbPath(file.zName);
         this.mapPathToFile.delete(journalPath);
+
+        file.readLock.close();
+        file.writeLock.close();
       } else if (file.flags & VFS.SQLITE_OPEN_MAIN_JOURNAL) {
         // The actual OPFS journal file is managed with the main database
         // file, so don't close the access handle here.
@@ -278,7 +283,50 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
    * @returns {number|Promise<number>}
    */
   jLock(pFile, lockType) {
-    return VFS.SQLITE_OK;
+    try {
+      const file = this.mapIdToFile.get(pFile);
+      if (file.lockState === VFS.SQLITE_LOCK_NONE && lockType === VFS.SQLITE_LOCK_SHARED) {
+        // We do all our locking work in this transition.
+        if (file.retryResult === null) {
+          // Manage some special cases.
+          if (file.accessHandle.getSize() === 0) {
+            // The database has not been created. We will need a write lock.
+            file.writeHint = '2';
+          }
+          if (file.journalHandle.getSize() > 0) {
+            // There is a hot journal. We will need a write lock.
+            file.writeHint = '2';
+          }
+
+          if (file.writeHint || file.readLock.mode !== 'shared') {
+            // Asynchronous lock acquisition is needed. Set retryResult to
+            // non-null so when SQLite calls jUnlock() it knows not to reset
+            // any locks we have in progress.
+            file.retryResult = {};
+            this._module.retryOps.push(this.#retryLock(pFile, lockType));
+            return VFS.SQLITE_BUSY;
+          }
+
+          // This is a read transaction and we can get the shared
+          // lock synchronously.
+          file.readLock.acquireIfHeld('shared');
+        } else if (file.retryResult instanceof Error) {
+          throw file.retryResult;
+        }
+        file.retryResult = null;
+      } else if (lockType >= VFS.SQLITE_LOCK_RESERVED && !file.writeLock.mode) {
+        // This is a write transaction but we don't already have the write
+        // lock. This happens when the write hint was not used, which this
+        // VFS treats as an error.
+        // TODO: Arrange for the write hint to be set on unlock.
+        return VFS.SQLITE_BUSY;
+      }
+      file.lockState = lockType;
+      return VFS.SQLITE_OK;
+    } catch (e) {
+      this.lastError = e;
+      return VFS.SQLITE_IOERR_LOCK;
+    }
   }
 
   /**
@@ -287,7 +335,26 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
    * @returns {number}
    */
   jUnlock(pFile, lockType) {
-    return VFS.SQLITE_OK;
+    try {
+      const file = this.mapIdToFile.get(pFile);
+
+      // If retryResult is non-null, an asynchronous lock operation is in
+      // progress. In that case, don't change any locks.
+      if (!file.retryResult && lockType === VFS.SQLITE_LOCK_NONE) {
+        // In this VFS, this is the only unlock transition that matters.
+        file.writeLock.release();
+        if (file.readLock.mode === 'exclusive') {
+          file.readLock.release();
+        } else {
+          file.readLock.releaseLazy();
+        }
+        file.writeHint = null;
+      }
+      file.lockState = lockType;
+    } catch (e) {
+      this.lastError = e;
+      return VFS.SQLITE_IOERR_UNLOCK;
+    }
   }
 
   /**
@@ -314,6 +381,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
           const key = extractString(pArg, pArg.getUint32(4, true));
           const valueAddress = pArg.getUint32(8, true);
           const value = valueAddress ? extractString(pArg, valueAddress) : null;
+          console.log(`PRAGMA ${key} ${value}`);
           switch (key.toLowerCase()) {
             case 'experimental_pragma_20251114':
               // After entering the SHARED locking state on the next
@@ -427,6 +495,32 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
    */
   #getJournalPathFromDbPath(dbPath) {
     return `${dbPath}-journal`;
+  }
+
+  /**
+   * Handle asynchronous jLock() tasks.
+   * @param {number} pFile 
+   * @param {number} lockType 
+   */
+  async #retryLock(pFile, lockType) {
+    const file = this.mapIdToFile.get(pFile);
+    try {
+      if (file.writeHint === '1') {
+        // TODO: replace this temporary code.
+        await file.readLock.acquire('exclusive', file.timeout);
+        await file.writeLock.acquire('exclusive', file.timeout);
+      } else if (file.writeHint === '2') {
+        // TODO: replace this temporary code.
+        await file.readLock.acquire('exclusive', file.timeout);
+        await file.writeLock.acquire('exclusive', file.timeout);
+      } else {
+        await file.readLock.acquire('shared', file.timeout);
+      }
+      file.retryResult = {};
+    } catch (e) {
+      file.retryResult = e;
+      return;
+    }
   }
 
   /**
