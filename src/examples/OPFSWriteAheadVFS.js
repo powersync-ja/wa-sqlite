@@ -356,12 +356,29 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
               }
               return VFS.SQLITE_OK;
           }
+          break;
+
+        case VFS.SQLITE_FCNTL_BEGIN_ATOMIC_WRITE:
+        case VFS.SQLITE_FCNTL_COMMIT_ATOMIC_WRITE:
+        case VFS.SQLITE_FCNTL_ROLLBACK_ATOMIC_WRITE:
+          // TODO
+          return VFS.SQLITE_OK;
       }
     } catch (e) {
       this.lastError = e;
       return VFS.SQLITE_IOERR;
     }
     return VFS.SQLITE_NOTFOUND;
+  }
+
+  /**
+   * @param {number} pFile
+   * @returns {number}
+   */
+  jDeviceCharacteristics(pFile) {
+    return 0
+    | VFS.SQLITE_IOCAP_BATCH_ATOMIC
+    | VFS.SQLITE_IOCAP_UNDELETABLE_WHEN_OPEN;
   }
 
   /**
