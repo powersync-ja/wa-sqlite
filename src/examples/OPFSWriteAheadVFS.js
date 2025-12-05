@@ -1,20 +1,22 @@
 import { FacadeVFS } from "../FacadeVFS.js";
 import * as VFS from '../VFS.js';
+import { Lock } from "./Lock.js";
 import { LazyLock } from "./LazyLock.js";
 
 /**
  * @typedef FileEntry
  * @property {string} zName
  * @property {number} flags
- * @property {FileSystemSyncAccessHandle} accessHandle
+ * @property {FileSystemSyncAccessHandle} [accessHandle]
  * 
  * Main database file properties:
- * @property {string} [writeHint]
- * @property {LazyLock} [accessLock]
- * @property {number} [timeout]
+ * @property {*} [retryResult]
+ * @property {FileSystemSyncAccessHandle} [journalHandle]
  * 
- * Main journal file properties:
- * @property {FileEntry} [dbFile]
+ * @property {string} [writeHint]
+ * @property {LazyLock} [readLock]
+ * @property {Lock} [writeLock]
+ * @property {number} [timeout]
  */
 
 /**
@@ -45,42 +47,52 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
    * @param {number} fileId 
    * @param {number} flags 
    * @param {DataView} pOutFlags 
-   * @returns {Promise<number>}
+   * @returns {number}
    */
-  async jOpen(zName, fileId, flags, pOutFlags) {
+  jOpen(zName, fileId, flags, pOutFlags) {
     try {
-      // For simplicity, everything goes into the OPFS root directory.
-      dirHandle = dirHandle ?? await navigator.storage.getDirectory();
-      const fileHandle = await dirHandle.getFileHandle(
-        zName,
-        { create: (flags & VFS.SQLITE_OPEN_CREATE) === VFS.SQLITE_OPEN_CREATE });
-
-      // Open a synchronous access handle with concurrent access.
-      // @ts-ignore
-      const accessHandle = await fileHandle.createSyncAccessHandle({
-        mode: 'readwrite-unsafe'
-      });
-
-      /** @type {FileEntry} */ const file = {
+      const file = this.mapPathToFile.get(zName) ?? {
         zName,
         flags,
-        accessHandle,
+        retryResult: null,
       };
+      this.mapPathToFile.set(zName, file);
 
       if (flags & VFS.SQLITE_OPEN_MAIN_DB) {
-        file.accessLock = new LazyLock(`${zName}-access`);
+        // Open database and journal files with a retry operation.
+        if (file.retryResult === null) {
+          // This is the initial open attempt. Start the asynchronous task
+          // and return SQLITE_BUSY to force a retry.
+          this._module.retryOps.push(this.#retryOpen(zName, flags, fileId, pOutFlags));
+          return VFS.SQLITE_BUSY;
+        } else if (file.retryResult instanceof Error) {
+          throw file.retryResult;
+        }
+
+        // Initialize database file state.
+        file.accessHandle = file.retryResult.accessHandle;
+        file.journalHandle = file.retryResult.journalHandle;
+        file.retryResult = null;
+
+        file.readLock = new LazyLock(`${zName}-read`);
+        file.writeLock = new Lock(`${zName}-write`);
         file.timeout = -1;
         file.writeHint = null;
       } else if (flags & VFS.SQLITE_OPEN_MAIN_JOURNAL) {
+        // A journal file is managed with its main database so look that up.
         const dbFilename = zName.slice(0, -"-journal".length);
         const dbFile = this.mapPathToFile.get(dbFilename);
         if (!dbFile) {
           throw new Error(`database file not found for journal ${zName}`);
         }
-        file.dbFile = dbFile; 
+
+        // Initialize journal file state.
+        file.accessHandle = dbFile.journalHandle;
+      } else {
+        throw new Error(`unsupported file type 0x${flags.toString(16)} for ${zName}`);
       }
+
       this.mapIdToFile.set(fileId, file);
-      this.mapPathToFile.set(zName, file);
       pOutFlags.setInt32(0, flags, true);
       return VFS.SQLITE_OK;
     } catch (e) {
@@ -92,12 +104,20 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
   /**
    * @param {string} zName 
    * @param {number} syncDir 
-   * @returns {Promise<number>}
+   * @returns {number}
    */
-  async jDelete(zName, syncDir) {
+  jDelete(zName, syncDir) {
     try {
-      dirHandle = dirHandle ?? await navigator.storage.getDirectory();
-      await dirHandle.removeEntry(zName, { recursive: false });
+      const file = this.mapPathToFile.get(zName);
+      if (!file) throw new Error(`file not found: ${zName}`);
+      if (file.flags & VFS.SQLITE_OPEN_MAIN_JOURNAL) {
+        // The actual OPFS journal file is managed with the main database.
+        // We don't actually delete it, just truncate it to zero length.
+        file.accessHandle.truncate(0);
+        file.accessHandle.flush();
+      } else {
+        throw new Error(`Unexpected delete: ${zName}`);
+      }
       return VFS.SQLITE_OK;
     } catch (e) {
       return VFS.SQLITE_IOERR_DELETE;
@@ -108,19 +128,18 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
    * @param {string} zName 
    * @param {number} flags 
    * @param {DataView} pResOut 
-   * @returns {Promise<number>}
+   * @returns {number}
    */
-  async jAccess(zName, flags, pResOut) {
+  jAccess(zName, flags, pResOut) {
     try {
-      dirHandle = dirHandle ?? await navigator.storage.getDirectory();
-      const fileHandle = await dirHandle.getFileHandle(zName, { create: false });
-      pResOut.setInt32(0, 1, true);
-      return VFS.SQLITE_OK;
-    } catch (e) {
-      if (e.name === 'NotFoundError') {
+      if (this.mapPathToFile.has(zName)) {
+        pResOut.setInt32(0, 1, true);
+        return VFS.SQLITE_OK;
+      } else {
         pResOut.setInt32(0, 0, true);
         return VFS.SQLITE_OK;
       }
+    } catch (e) {
       this.lastError = e;
       return VFS.SQLITE_IOERR_ACCESS;
     }
@@ -133,9 +152,20 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
   jClose(fileId) {
     try {
       const file = this.mapIdToFile.get(fileId);
+      if (file.flags & VFS.SQLITE_OPEN_MAIN_DB) {
+        file.accessHandle.close();
+        this.mapPathToFile.delete(file?.zName);
+
+        file.journalHandle.close();
+        const journalPath = this.#getJournalPathFromDbPath(file.zName);
+        this.mapPathToFile.delete(journalPath);
+      } else if (file.flags & VFS.SQLITE_OPEN_MAIN_JOURNAL) {
+        // The actual OPFS journal file is managed with the main database
+        // file, so don't close the access handle here.
+      }
+
+      // Disassociate fileId from file entry.
       this.mapIdToFile.delete(fileId);
-      this.mapPathToFile.delete(file?.zName);
-      file?.accessHandle.close();
       return VFS.SQLITE_OK;
     } catch (e) {
       return VFS.SQLITE_IOERR_CLOSE;
@@ -346,6 +376,62 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
       zBuf[written] = 0;
     }
     return VFS.SQLITE_OK
+  }
+
+  /**
+   * Get OPFS synchronous access handle.
+   * @param {FileSystemDirectoryHandle} dirHandle 
+   * @param {string} filename 
+   * @param {number} flags 
+   * @returns {Promise<FileSystemSyncAccessHandle>}
+   */
+  async #getAccessHandle(dirHandle, filename, flags) {
+    const fileHandle = await dirHandle.getFileHandle(
+      filename,
+      { create: (flags & VFS.SQLITE_OPEN_CREATE) === VFS.SQLITE_OPEN_CREATE });
+      
+    // Open a synchronous access handle with concurrent access.
+    // @ts-ignore
+    const accessHandle = await fileHandle.createSyncAccessHandle({
+      mode: 'readwrite-unsafe'
+    });
+    return accessHandle;
+  }
+
+  /**
+   * @param {string} dbPath 
+   * @returns {string}
+   */
+  #getJournalPathFromDbPath(dbPath) {
+    return `${dbPath}-journal`;
+  }
+
+  /**
+   * Handle asynchronous jOpen() tasks.
+   * @param {string} zName 
+   * @param {number} flags 
+   * @param {number} fileId 
+   * @param {DataView} pOutFlags 
+   * @returns {Promise<void>}
+   */
+  async #retryOpen(zName, flags, fileId, pOutFlags) {
+    const file = this.mapPathToFile.get(zName);
+    try {
+      // For simplicity, everything goes into the OPFS root directory.
+      dirHandle = dirHandle ?? await navigator.storage.getDirectory();
+
+      const accessHandle = await this.#getAccessHandle(dirHandle, zName, flags);
+
+      const journalPath = this.#getJournalPathFromDbPath(zName);
+      const journalHandle = await this.#getAccessHandle(dirHandle, journalPath, flags);
+
+      file.retryResult = { accessHandle, journalHandle };
+
+      // TODO: Load write-ahead overlay.
+    } catch (e) {
+      file.retryResult = e;
+      return;
+    }
   }
 }
 

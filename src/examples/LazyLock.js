@@ -51,9 +51,14 @@ export class LazyLock extends Lock {
   }
 
   release() {
+    super.release();
+    this.#hasReleaseRequest = false;
+  }
+
+  releaseLazy() {
     // Release the lock only if someone else wants it.
     if (this.#hasReleaseRequest) {
-      super.release();
+      this.release();
     }
   }
 }
