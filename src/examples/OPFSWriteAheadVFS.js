@@ -319,6 +319,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
         // lock. This happens when the write hint was not used, which this
         // VFS treats as an error.
         // TODO: Arrange for the write hint to be set on unlock.
+        console.error('Multi-statement write transaction cannot use BEGIN DEFERRED')
         return VFS.SQLITE_BUSY;
       }
       file.lockState = lockType;
@@ -378,10 +379,10 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
       const file = this.mapIdToFile.get(pFile);
       switch (op) {
         case VFS.SQLITE_FCNTL_PRAGMA:
-          const key = extractString(pArg, pArg.getUint32(4, true));
+          const key = this._module.UTF8ToString(pArg.getUint32(4, true));
           const valueAddress = pArg.getUint32(8, true);
-          const value = valueAddress ? extractString(pArg, valueAddress) : null;
-          console.log(`PRAGMA ${key} ${value}`);
+          const value = valueAddress ? this._module.UTF8ToString(valueAddress) : null;
+          this.log?.(`PRAGMA ${key} ${value}`);
           switch (key.toLowerCase()) {
             case 'experimental_pragma_20251114':
               // After entering the SHARED locking state on the next
@@ -434,6 +435,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
 
         case VFS.SQLITE_FCNTL_BEGIN_ATOMIC_WRITE:
         case VFS.SQLITE_FCNTL_COMMIT_ATOMIC_WRITE:
+          return VFS.SQLITE_OK;
         case VFS.SQLITE_FCNTL_ROLLBACK_ATOMIC_WRITE:
           // TODO
           return VFS.SQLITE_OK;
@@ -535,6 +537,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
     const file = this.mapPathToFile.get(zName);
     try {
       // For simplicity, everything goes into the OPFS root directory.
+      // TODO: Support OPFS subdirectories.
       dirHandle = dirHandle ?? await navigator.storage.getDirectory();
 
       const accessHandle = await this.#getAccessHandle(dirHandle, zName, flags);
@@ -550,14 +553,4 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
       return;
     }
   }
-}
-
-/**
- * @param {DataView} dataView 
- * @param {number} p 
- * @returns {string}
- */
-function extractString(dataView, p) {
-  const chars = new Uint8Array(dataView.buffer, p);
-  return new TextDecoder().decode(chars.subarray(0, chars.indexOf(0)));
 }
