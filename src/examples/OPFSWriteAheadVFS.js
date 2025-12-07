@@ -2,6 +2,7 @@ import { FacadeVFS } from "../FacadeVFS.js";
 import * as VFS from '../VFS.js';
 import { Lock } from "./Lock.js";
 import { LazyLock } from "./LazyLock.js";
+import { WriteAhead } from "./WriteAhead.js";
 
 /**
  * @typedef FileEntry
@@ -18,6 +19,8 @@ import { LazyLock } from "./LazyLock.js";
  * @property {LazyLock} [readLock]
  * @property {Lock} [writeLock]
  * @property {number} [timeout]
+ * 
+ * @property {WriteAhead} [writeAhead]
  */
 
 /**
@@ -28,7 +31,7 @@ let dirHandle = null;
 
 export class OPFSWriteAheadVFS extends FacadeVFS {
   lastError = null;
-  // log = console.log;
+  log = console.log;
   
   /** @type {Map<number, FileEntry>} */ mapIdToFile = new Map();
   /** @type {Map<string, FileEntry>} */ mapPathToFile = new Map();
@@ -73,11 +76,12 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
         // Initialize database file state.
         file.accessHandle = file.retryResult.accessHandle;
         file.journalHandle = file.retryResult.journalHandle;
+        file.writeAhead = file.retryResult.writeAhead;
         file.retryResult = null;
 
         file.lockState = VFS.SQLITE_LOCK_NONE;
-        file.readLock = new LazyLock(`${zName}-read`);
-        file.writeLock = new Lock(`${zName}-write`);
+        file.readLock = new LazyLock(`${zName}#read`);
+        file.writeLock = new Lock(`${zName}#write`);
         file.timeout = -1;
         file.writeHint = null;
       } else if (flags & VFS.SQLITE_OPEN_MAIN_JOURNAL) {
@@ -193,10 +197,29 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
     try {
       const file = this.mapIdToFile.get(fileId);
 
-      // On Chrome (at least), passing pData to accessHandle.read() is
-      // an error because pData is a Proxy of a Uint8Array. Calling
-      // subarray() produces a real Uint8Array and that works.
-      const bytesRead = file.accessHandle.read(pData.subarray(), { at: iOffset });
+      let bytesRead = null;
+      if (file.flags & VFS.SQLITE_OPEN_MAIN_DB) {
+        // Try reading from the OPFS write-ahead overlay first. A read on
+        // the database file is always a complete page, except when reading
+        // from the 100-byte header.
+        const pageOffset = iOffset < 100 ? iOffset : 0;
+        const page = file.writeAhead.read(iOffset - pageOffset);
+        if (page) {
+          const readData = page.subarray(pageOffset, pageOffset + pData.byteLength);
+          pData.set(readData);
+          bytesRead = readData.byteLength;
+        }
+      }
+
+      if (bytesRead === null) {
+        // Read directly from the OPFS file.
+
+        // On Chrome (at least), passing pData to accessHandle.read() is
+        // an error because pData is a Proxy of a Uint8Array. Calling
+        // subarray() produces a real Uint8Array and that works.
+        bytesRead = file.accessHandle.read(pData.subarray(), { at: iOffset });
+      }
+
       if (bytesRead < pData.byteLength) {
         pData.fill(0, bytesRead);
         return VFS.SQLITE_IOERR_SHORT_READ;
@@ -216,6 +239,14 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
   jWrite(fileId, pData, iOffset) {
     try {
       const file = this.mapIdToFile.get(fileId);
+
+      if (file.flags & VFS.SQLITE_OPEN_MAIN_DB) {
+        if (file.writeHint !== 'exclusive') {
+          // Write to the write-ahead overlay.
+          file.writeAhead.write(iOffset, pData.subarray());
+          return VFS.SQLITE_OK;
+        }
+      }
 
       // On Chrome (at least), passing pData to accessHandle.write() is
       // an error because pData is a Proxy of a Uint8Array. Calling
@@ -268,7 +299,13 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
   jFileSize(fileId, pSize64) {
     try {
       const file = this.mapIdToFile.get(fileId);
-      const size = file.accessHandle.getSize();
+
+      let size;
+      if (file.flags & VFS.SQLITE_OPEN_MAIN_DB) {
+        size = file.writeAhead.getFileSize() || file.accessHandle.getSize();
+      } else {
+        size = file.accessHandle.getSize();
+      }
       pSize64.setBigInt64(0, BigInt(size), true);
       return VFS.SQLITE_OK;
     } catch (e) {
@@ -313,7 +350,11 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
         } else if (file.retryResult instanceof Error) {
           throw file.retryResult;
         }
+
         file.retryResult = null;
+        if (file.writeHint === null) {
+          file.writeAhead.isolateForRead();
+        }
       } else if (lockType >= VFS.SQLITE_LOCK_RESERVED && !file.writeLock.mode) {
         // This is a write transaction but we don't already have the write
         // lock. This happens when the write hint was not used, which this
@@ -350,6 +391,8 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
           file.readLock.releaseLazy();
         }
         file.writeHint = null;
+
+        file.writeAhead.rejoin();
       }
       file.lockState = lockType;
     } catch (e) {
@@ -391,7 +434,9 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
               // EXCLUSIVE if value is '2'.
               switch (value) {
                 case '1':
-                  file.writeHint = 'reserved';
+                  if (file.writeHint !== 'exclusive') {
+                    file.writeHint = 'reserved';
+                  }
                   break;
                 case '2':
                   file.writeHint = 'exclusive';
@@ -448,6 +493,12 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
         case VFS.SQLITE_FCNTL_ROLLBACK_ATOMIC_WRITE:
           // TODO
           return VFS.SQLITE_OK;
+
+        case VFS.SQLITE_FCNTL_SYNC:
+          if (file.writeHint === 'reserved') {
+            file.writeAhead.commit();
+          }
+          break;
       }
     } catch (e) {
       this.lastError = e;
@@ -488,26 +539,6 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
   }
 
   /**
-   * Get OPFS synchronous access handle.
-   * @param {FileSystemDirectoryHandle} dirHandle 
-   * @param {string} filename 
-   * @param {number} flags 
-   * @returns {Promise<FileSystemSyncAccessHandle>}
-   */
-  async #getAccessHandle(dirHandle, filename, flags) {
-    const fileHandle = await dirHandle.getFileHandle(
-      filename,
-      { create: (flags & VFS.SQLITE_OPEN_CREATE) === VFS.SQLITE_OPEN_CREATE });
-      
-    // Open a synchronous access handle with concurrent access.
-    // @ts-ignore
-    const accessHandle = await fileHandle.createSyncAccessHandle({
-      mode: 'readwrite-unsafe'
-    });
-    return accessHandle;
-  }
-
-  /**
    * @param {string} dbPath 
    * @returns {string}
    */
@@ -525,13 +556,18 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
     try {
       switch (file.writeHint) {
         case 'reserved':
-          // TODO: Take only the writeLock when using write-ahead.
-          await file.readLock.acquire('exclusive', file.timeout);
+          // This transaction will be write-ahead. We only need
+          // writeLock, not readLock.
           await file.writeLock.acquire('exclusive', file.timeout);
+          await file.writeAhead.isolateForWrite();
           break;
         case 'exclusive':
+          // This transaction will write directly to the database.
           await file.readLock.acquire('exclusive', file.timeout);
           await file.writeLock.acquire('exclusive');
+
+          // Transfer everything in write-ahead to the OPFS file.
+          await file.writeAhead.flush();
           break;
         default:
           await file.readLock.acquire('shared', file.timeout);
@@ -559,14 +595,44 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
       // TODO: Support OPFS subdirectories.
       dirHandle = dirHandle ?? await navigator.storage.getDirectory();
 
-      const accessHandle = await this.#getAccessHandle(dirHandle, zName, flags);
+      // Open the main database OPFS file.
+      let created = false;
+      let accessHandle;
+      try {
+        const fileHandle = await dirHandle.getFileHandle(zName);
+        // @ts-ignore
+        accessHandle = await fileHandle.createSyncAccessHandle({
+          mode: 'readwrite-unsafe'
+        });
+      } catch (e) {
+        if (e.name === 'NotFoundError' && (flags & VFS.SQLITE_OPEN_CREATE)) {
+          const fileHandle = await dirHandle.getFileHandle(zName, { create: true });
+          // @ts-ignore
+          accessHandle = await fileHandle.createSyncAccessHandle({
+            mode: 'readwrite-unsafe'
+          });
+          created = true;
+        } else {
+          throw e;
+        }
+      }
 
+      // Pre-open the journal OPFS file here.
       const journalPath = this.#getJournalPathFromDbPath(zName);
-      const journalHandle = await this.#getAccessHandle(dirHandle, journalPath, flags);
+      const fileHandle = await dirHandle.getFileHandle(journalPath, { create: true });
+      // @ts-ignore
+      const journalHandle = await fileHandle.createSyncAccessHandle({
+        mode: 'readwrite-unsafe'
+      });
 
-      file.retryResult = { accessHandle, journalHandle };
+      // Create the write-ahead manager.
+      const writeAhead= new WriteAhead(
+        zName,
+        (offset, data) => accessHandle.write(data, { at: offset }),
+        { create: created });
+      await writeAhead.ready();
 
-      // TODO: Load write-ahead overlay.
+      file.retryResult = { accessHandle, journalHandle, writeAhead };
     } catch (e) {
       file.retryResult = e;
       return;
