@@ -629,6 +629,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
       const writeAhead= new WriteAhead(
         zName,
         (offset, data) => accessHandle.write(data, { at: offset }),
+        () => accessHandle.flush(),
         { create: created });
       await writeAhead.ready();
 

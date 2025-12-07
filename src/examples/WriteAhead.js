@@ -15,12 +15,13 @@ import { Lock } from './Lock.js';
 export class WriteAhead {
   #zName;
   #writeFn;
+  #syncFn;
   #options = {
     create: false
   };
 
   #ready;
-  /** @type {'read'|'write'|'flush'} */ #state = null
+  /** @type {'read'|'write'} */ #state = null
 
   #txId = 0;
   /** @type {Lock} */ #txLock = null;
@@ -28,7 +29,7 @@ export class WriteAhead {
 
   /** @type {Map<number, Uint8Array>} */ #waOverlay = new Map();
   /** @type {Map<number, Uint8Array>} */ #txOverlay = new Map();
-  #mapIdToTx = new Map();
+  /** @type {Map<number, Transaction>} */ #mapIdToTx = new Map();
 
   #broadcastChannel;
 
@@ -37,27 +38,31 @@ export class WriteAhead {
   /**
    * @param {string} zName 
    * @param {(offset: number, data: Uint8Array) => void} writeFn 
+   * @param {() => void} syncFn
    * @param {WriteAheadOptions} options 
    */
-  constructor(zName, writeFn, options) {
+  constructor(zName, writeFn, syncFn, options) {
     this.#zName = zName;
     this.#writeFn = writeFn;
+    this.#syncFn = syncFn;
     this.#options = Object.assign(this.#options, options);
 
     this.#broadcastChannel = new BroadcastChannel(`${zName}#wa`);
     this.#broadcastChannel.onmessage = (event) => {
-      /** @type {{type: string, tx: Transaction}} */
       if (event.data.type === 'tx') {
         // New transaction from another connection.
         /** @type {Transaction} */ const tx = event.data.tx;
         this.#mapIdToTx.set(tx.id, tx);
 
         if (this.#state === null) {
+          // Not in an isolated state, so advance our view of the database.
           this.#advanceTxId();
         }
+      } else if (event.data.type === 'ckpt') {
+        // Checkpoint notification from another connection.
+        /** @type {number} */ const ckptId = event.data.ckptId;
+        this.#handleCheckpoint(ckptId);
       }
-
-      // TODO: handle checkpoint notification
     };
 
     this.#ready = (async () => {
@@ -65,8 +70,8 @@ export class WriteAhead {
       await this.#updateTxLock(0);
 
       // Load all the write-ahead transactions from storage.
-      await this.initTxRepo(zName);
-      const { txList, emptyId } = await this.#loadTxList(0);
+      await this.#repoInit(zName);
+      const { txList, emptyId } = await this.#repoLoad(0);
       if (txList.length > 0) {
         for (const tx of txList) {
           this.#mapIdToTx.set(tx.id, tx);
@@ -93,14 +98,20 @@ export class WriteAhead {
   }
 
   isolateForRead() {
+    if (this.#state !== null) {
+      throw new Error('Already in isolated state');
+    }
     this.#state = 'read';
   }
 
   async isolateForWrite() {
+    if (this.#state !== null) {
+      throw new Error('Already in isolated state');
+    }
     this.#state = 'write';
 
     // Ensure that we have all previous transactions.
-    const { txList, emptyId } = await this.#loadTxList(this.#txId);
+    const { txList, emptyId } = await this.#repoLoad(this.#txId);
     if (txList.length > 0) {
       for (const tx of txList) {
         this.#mapIdToTx.set(tx.id, tx);
@@ -169,7 +180,7 @@ export class WriteAhead {
     this.#advanceTxId();
 
     // Persist the transaction to storage, then send to other connections.
-    this.#storeTx(tx).then(() => {
+    this.#repoStore(tx).then(() => {
       this.#broadcastChannel.postMessage({ type: 'tx', tx });
     }, e => {
       // TODO: handle error
@@ -183,8 +194,16 @@ export class WriteAhead {
   }
   
   async flush() {
-    this.#state = 'flush';
+    if (this.#state !== null) {
+      throw new Error('Already in isolated state');
+    }
+
     try {
+      // Make sure we have every transaction.
+      await this.isolateForWrite();
+      this.rejoin();
+
+      await this.#checkpoint(this.#txId);
     } finally {
       this.#state = null;
     }
@@ -207,7 +226,53 @@ export class WriteAhead {
     this.#updateTxLock(this.#txId);
   }
 
-  async initTxRepo(zName) {
+  /**
+   * 
+   * @param {number} [ckptId] 
+   */
+  async #checkpoint(ckptId) {
+    await navigator.locks.request(`${this.#zName}-ckpt`, async () => {
+      // If the txId checkpoint is not specified, find the lowest txId
+      // in use by any connection.
+      if (ckptId === undefined) {
+        ckptId = await this.#getLowestUsedTxId();
+      }
+
+      // Starting at ckptId and going backwards (earlier), write transaction
+      // pages to the main database file. Do not overwrite a page written
+      // by a later transaction.
+      const writtenOffsets = new Set();
+      let tx = { id: ckptId + 1 };
+      while (tx = this.#mapIdToTx.get(tx.id - 1)) {
+        for (const [offset, data] of tx.pages) {
+          if (!writtenOffsets.has(offset)) {
+            this.#writeFn(offset, data);
+            writtenOffsets.add(offset);
+          }
+        }
+      }
+      this.#syncFn();
+
+      // Notify other connections of the checkpoint.
+      this.#broadcastChannel.postMessage({ type: 'ckpt', ckptId });
+
+      // Remove checkpointed transactions from write-ahead.
+      this.#repoDeleteUpTo(ckptId);
+    });
+  }
+
+  #handleCheckpoint(ckptId) {
+    // Removed checkpointed pages from the write-ahead overlay.
+    let tx = { id: ckptId + 1 };
+    while (tx = this.#mapIdToTx.get(tx.id - 1)) {
+      for (const offset of tx.pages.keys()) {
+        this.#waOverlay.delete(offset);
+      }
+      this.#mapIdToTx.delete(tx.id);
+    }
+  }
+
+  async #repoInit(zName) {
     // Delete existing IndexedDB database for a new SQLite database.
     if (this.#options.create) {
       await idbWrap(indexedDB.deleteDatabase(zName));
@@ -226,12 +291,23 @@ export class WriteAhead {
     this.#idbDb = await idbWrap(idbRequest);
   }
   
+  async #repoDeleteUpTo(txId) {
+    const idbTx = this.#idbDb.transaction('txStore', 'readwrite');
+    const results = Promise.all([
+      idbTx.objectStore('txStore').delete(IDBKeyRange.upperBound(txId)),
+      idbTx
+    ].map(idbWrap));
+    idbTx.commit();
+
+    return results;
+  }
+
   /**
    * Load transactions from persistent storage starting from txId + 1.
    * @param {number} txId
    * @returns {Promise<{ txList: Transaction[], emptyId: number}>}
    */
-  async #loadTxList(txId) {
+  async #repoLoad(txId) {
     const idbTx = this.#idbDb.transaction('txStore', 'readonly');
     const idbTxStore = idbTx.objectStore('txStore');
 
@@ -250,7 +326,7 @@ export class WriteAhead {
    * Copy a new transaction to persistent storage.
    * @param {Transaction} tx 
    */
-  async #storeTx(tx) {
+  async #repoStore(tx) {
     const idbTx = this.#idbDb.transaction('txStore', 'readwrite');
     const idbTxStore = idbTx.objectStore('txStore');
     
