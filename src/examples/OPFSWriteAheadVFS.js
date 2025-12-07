@@ -8,12 +8,12 @@ import { LazyLock } from "./LazyLock.js";
  * @property {string} zName
  * @property {number} flags
  * @property {FileSystemSyncAccessHandle} [accessHandle]
- * 
+
  * Main database file properties:
  * @property {*} [retryResult]
  * @property {FileSystemSyncAccessHandle} [journalHandle]
  * 
- * @property {string} [writeHint]
+ * @property {'reserved'|'exclusive'} [writeHint]
  * @property {number} [lockState]
  * @property {LazyLock} [readLock]
  * @property {Lock} [writeLock]
@@ -291,11 +291,11 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
           // Manage some special cases.
           if (file.accessHandle.getSize() === 0) {
             // The database has not been created. We will need a write lock.
-            file.writeHint = '2';
+            file.writeHint = 'exclusive';
           }
           if (file.journalHandle.getSize() > 0) {
             // There is a hot journal. We will need a write lock.
-            file.writeHint = '2';
+            file.writeHint = 'exclusive';
           }
 
           if (file.writeHint || file.readLock.mode !== 'shared') {
@@ -389,7 +389,16 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
               // transaction, SQLite intends to immediately (barring a hot
               // journal) transition to RESERVED if value is '1', or
               // EXCLUSIVE if value is '2'.
-              file.writeHint = value;
+              switch (value) {
+                case '1':
+                  file.writeHint = 'reserved';
+                  break;
+                case '2':
+                  file.writeHint = 'exclusive';
+                  break;
+                default:
+                  throw new Error(`unexpected write hint value: ${value}`);
+              }
               break;
             case 'busy_timeout':
               // Override SQLite's handling of busy timeouts with our
@@ -412,7 +421,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
                   // way SQLite exclusive mode works (not actually exclusive
                   // until a write occurs), starting with a read is like
                   // BEGIN DEFERRED.
-                  file.writeHint = '1';
+                  file.writeHint = 'reserved';
                   break;
                 case 'normal':
                   // The only reason for this is if
@@ -452,9 +461,16 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
    * @returns {number}
    */
   jDeviceCharacteristics(pFile) {
-    return 0
-    | VFS.SQLITE_IOCAP_BATCH_ATOMIC
-    | VFS.SQLITE_IOCAP_UNDELETABLE_WHEN_OPEN;
+    // Allow batch atomic writes with write-ahead. Disallow when writing
+    // directly to the file.
+    let value = VFS.SQLITE_IOCAP_UNDELETABLE_WHEN_OPEN;
+    const file = this.mapIdToFile.get(pFile);
+    if (file.flags & VFS.SQLITE_OPEN_MAIN_DB) {
+      if (file.writeHint !== 'exclusive') {
+        value |= VFS.SQLITE_IOCAP_BATCH_ATOMIC;
+      }
+    }
+    return value
   }
 
   /**
@@ -507,16 +523,19 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
   async #retryLock(pFile, lockType) {
     const file = this.mapIdToFile.get(pFile);
     try {
-      if (file.writeHint === '1') {
-        // TODO: replace this temporary code.
-        await file.readLock.acquire('exclusive', file.timeout);
-        await file.writeLock.acquire('exclusive', file.timeout);
-      } else if (file.writeHint === '2') {
-        // TODO: replace this temporary code.
-        await file.readLock.acquire('exclusive', file.timeout);
-        await file.writeLock.acquire('exclusive', file.timeout);
-      } else {
-        await file.readLock.acquire('shared', file.timeout);
+      switch (file.writeHint) {
+        case 'reserved':
+          // TODO: Take only the writeLock when using write-ahead.
+          await file.readLock.acquire('exclusive', file.timeout);
+          await file.writeLock.acquire('exclusive', file.timeout);
+          break;
+        case 'exclusive':
+          await file.readLock.acquire('exclusive', file.timeout);
+          await file.writeLock.acquire('exclusive');
+          break;
+        default:
+          await file.readLock.acquire('shared', file.timeout);
+          break;
       }
       file.retryResult = {};
     } catch (e) {
