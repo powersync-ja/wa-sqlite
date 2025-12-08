@@ -243,7 +243,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
       if (file.flags & VFS.SQLITE_OPEN_MAIN_DB) {
         if (file.writeHint !== 'exclusive') {
           // Write to the write-ahead overlay.
-          file.writeAhead.write(iOffset, pData.subarray());
+          file.writeAhead.write(iOffset, pData);
           return VFS.SQLITE_OK;
         }
       }
@@ -491,7 +491,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
         case VFS.SQLITE_FCNTL_COMMIT_ATOMIC_WRITE:
           return VFS.SQLITE_OK;
         case VFS.SQLITE_FCNTL_ROLLBACK_ATOMIC_WRITE:
-          // TODO
+          // file.writeAhead.rollback();
           return VFS.SQLITE_OK;
 
         case VFS.SQLITE_FCNTL_SYNC:

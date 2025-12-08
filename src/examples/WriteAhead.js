@@ -147,7 +147,8 @@ export class WriteAhead {
    * @param {Uint8Array} data 
    */
   write(offset, data) {
-    this.#txOverlay.set(offset, data);
+    // Make a copy of the data to avoid external mutation.
+    this.#txOverlay.set(offset, data.slice());
   }
 
   truncate(newSize) {
