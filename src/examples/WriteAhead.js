@@ -410,7 +410,7 @@ export class WriteAhead {
     // we acquire a new lock and release the old one. We must not release
     // the old lock until the new one is in place.
     const oldLock = this.#txLock;
-    const newLockName = `${this.#zName}-txId-#${txId}#`;
+    const newLockName = `${this.#zName}-txId<${txId}>`;
     if (oldLock?.name !== newLockName) {
       this.#txLock = new Lock(newLockName);
       await this.#txLock.acquire('shared');
@@ -427,7 +427,7 @@ export class WriteAhead {
     // * Find those that match the txId lock name pattern.
     // * Extract the txId from the lock name.
     // * Return the lowest txId found.
-    const txLockRegex = new RegExp(`^(.*)-txId-#(\\d+)#$`);
+    const txLockRegex = new RegExp(`^(.*)-txId<(\\d+)>$`);
     const { held } = await navigator.locks.query();
     return held
       .map(lock => lock.name.match(txLockRegex))
