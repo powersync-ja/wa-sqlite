@@ -869,7 +869,7 @@ export function Factory(Module) {
   // succeed.
   async function retry(f) {
     let rc;
-    do {
+    for (let retryCount = 0; retryCount < 2; ++retryCount) {
       // Wait for all pending retry operations to complete. This is
       // normally empty on the first loop iteration.
       if (Module.retryOps.length) {
@@ -881,9 +881,10 @@ export function Factory(Module) {
       }
       
       rc = await f();
-
-      // Retry on failure with new pending retry operations.
-    } while (rc && Module.retryOps.length);
+      if (rc === SQLite.SQLITE_OK || Module.retryOps.length === 0) {
+        return rc;
+      }
+    }
     return rc;
   }
 

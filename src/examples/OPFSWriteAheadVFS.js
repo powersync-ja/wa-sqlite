@@ -15,6 +15,7 @@ import { WriteAhead } from "./WriteAhead.js";
  * @property {FileSystemSyncAccessHandle} [journalHandle]
  * 
  * @property {'reserved'|'exclusive'} [writeHint]
+ * @property {'normal'|'exclusive'|null} [lockingMode]
  * @property {number} [lockState]
  * @property {LazyLock} [readLock]
  * @property {Lock} [writeLock]
@@ -31,7 +32,7 @@ let dirHandle = null;
 
 export class OPFSWriteAheadVFS extends FacadeVFS {
   lastError = null;
-  log = console.log;
+  log = null;
   
   /** @type {Map<number, FileEntry>} */ mapIdToFile = new Map();
   /** @type {Map<string, FileEntry>} */ mapPathToFile = new Map();
@@ -80,6 +81,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
         file.retryResult = null;
 
         file.lockState = VFS.SQLITE_LOCK_NONE;
+        file.lockingMode = null;
         file.readLock = new LazyLock(`${zName}#read`);
         file.writeLock = new Lock(`${zName}#write`);
         file.timeout = -1;
@@ -340,8 +342,10 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
           if (file.accessHandle.getSize() === 0) {
             // The database has not been created. We will need a write lock.
             file.writeHint = 'exclusive';
-          }
-          if (file.journalHandle.getSize() > 0) {
+          } else if (file.lockingMode === 'exclusive') {
+            // PRAGMA locking_mode=EXCLUSIVE was set.
+            file.writeHint = 'exclusive';
+          } else if (file.journalHandle.getSize() > 0) {
             // There is a hot journal. We will need a write lock.
             file.writeHint = 'exclusive';
           }
@@ -370,14 +374,14 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
         // This is a write transaction but we don't already have the write
         // lock. This happens when the write hint was not used, which this
         // VFS treats as an error.
-        // TODO: Arrange for the write hint to be set on unlock.
-        console.error('Multi-statement write transaction cannot use BEGIN DEFERRED')
-        return VFS.SQLITE_BUSY;
+        // TODO: Arrange for the write hint to be set on unlock?
+        throw new Error('Multi-statement write transaction cannot use BEGIN DEFERRED');
       }
       file.lockState = lockType;
       return VFS.SQLITE_OK;
     } catch (e) {
       this.lastError = e;
+      console.error(e.message);
       return VFS.SQLITE_IOERR_LOCK;
     }
   }
@@ -471,21 +475,9 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
               return VFS.SQLITE_OK;
             case 'locking_mode':
               switch (value?.toLowerCase()) {
-                case 'exclusive':
-                  // Set the write hint to prevent deadlock if the first
-                  // statement in exclusive mode is a read. Because of the
-                  // way SQLite exclusive mode works (not actually exclusive
-                  // until a write occurs), starting with a read is like
-                  // BEGIN DEFERRED.
-                  file.writeHint = 'reserved';
-                  break;
                 case 'normal':
-                  // The only reason for this is if
-                  // PRAGMA locking_mode=EXCLUSIVE is followed by
-                  // PRAGMA locking_mode=NORMAL with no database operations
-                  // in between. Leaving this out wouldn't cause an error,
-                  // only a potential loss of concurrency for one transaction.
-                  file.writeHint = null;
+                case 'exclusive':
+                  file.lockingMode = value.toLowerCase();
                   break;
               }
               break;
@@ -502,7 +494,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
         case VFS.SQLITE_FCNTL_COMMIT_ATOMIC_WRITE:
           return VFS.SQLITE_OK;
         case VFS.SQLITE_FCNTL_ROLLBACK_ATOMIC_WRITE:
-          // file.writeAhead.rollback();
+          file.writeAhead.rollback();
           return VFS.SQLITE_OK;
 
         case VFS.SQLITE_FCNTL_SYNC:
