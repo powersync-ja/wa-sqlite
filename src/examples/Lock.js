@@ -17,7 +17,7 @@ export class Lock {
   close() {
     this.release();
   }
-  
+
   /**
    * @param {'shared'|'exclusive'} mode 
    * @param {number} timeout -1 for infinite, 0 for poll, >0 for milliseconds
@@ -51,6 +51,7 @@ export class Lock {
         this.#mode = mode;
         return new Promise(releaser => {
           this.#releaser = releaser;
+          console.log(`Lock acquire ${this.#name} ${mode}`);
           resolve(true);
         })
       }).catch(e => {
@@ -65,6 +66,7 @@ export class Lock {
 
   release() {
     this.#releaser?.();
+    if (this.#releaser) console.log(`Lock release ${this.#name} ${this.#mode}`);
     this.#releaser = null;
     this.#mode = null;
   }
