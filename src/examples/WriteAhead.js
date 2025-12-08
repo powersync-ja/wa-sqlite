@@ -88,6 +88,9 @@ export class WriteAhead {
     })();
   }
 
+  /**
+   * @returns {Promise<void>}
+   */
   ready() {
     return this.#ready;
   }
@@ -97,6 +100,12 @@ export class WriteAhead {
     this.#broadcastChannel.close();
   }
 
+  /**
+   * Freeze our view of the database.
+   * The view includes the transactions received so far but is not
+   * guaranteed to be completely up to date (this allows this method
+   * to be synchronous). Unfreeze the view with rejoin().
+   */
   isolateForRead() {
     if (this.#state !== null) {
       throw new Error('Already in isolated state');
@@ -104,6 +113,12 @@ export class WriteAhead {
     this.#state = 'read';
   }
 
+  /**
+   * Freeze our view of the database for writing.
+   * The view includes all transactions.
+   * Unfreeze the view with
+   * rejoin().
+   */
   async isolateForWrite() {
     if (this.#state !== null) {
       throw new Error('Already in isolated state');
@@ -120,6 +135,10 @@ export class WriteAhead {
         // race condition, but it could have been a page crash
         // between writing to IndexedDB and broadcasting. In case
         // of the latter, broadcast the transaction again.
+        // TODO: To avoid redundant broadcasts, consider scheduling
+        // a broadcast after a short delay and canceling if another
+        // broadcast is seen in the meantime. Alternatively, remove
+        // this code and schedule periodic checks.
         this.#broadcastChannel.postMessage({ type: 'tx', tx });
       }
 
@@ -131,6 +150,7 @@ export class WriteAhead {
 
   rejoin() {
     this.#state = null;
+    this.#txOverlay = new Map();
     this.#advanceTxId();
   }
 
@@ -139,6 +159,12 @@ export class WriteAhead {
    * @return {Uint8Array?}
    */
   read(offset) {
+    if (offset && this.#state === null) {
+      throw new Error('Not in isolated state');
+    }
+
+    // Look for the page in any write transaction in progress.
+    // Otherwise look in the write-ahead overlay.
     return this.#txOverlay?.get(offset) ?? this.#waOverlay.get(offset) ?? null;
   }
 
@@ -147,11 +173,19 @@ export class WriteAhead {
    * @param {Uint8Array} data 
    */
   write(offset, data) {
+    if (this.#state !== 'write') {
+      throw new Error('Not in write isolated state');
+    }
+
     // Make a copy of the data to avoid external mutation.
     this.#txOverlay.set(offset, data.slice());
   }
 
+  /**
+   * @param {number} newSize 
+   */
   truncate(newSize) {
+    // Nothing needed. Size is tracked from page 1 header in commit().
   }
 
   getFileSize() {
@@ -194,6 +228,10 @@ export class WriteAhead {
     this.#txOverlay = new Map();
   }
   
+  /**
+   * Flush the write-ahead transactions to the main database file.
+   * There must be no other connections reading or writing.
+   */
   async flush() {
     if (this.#state !== null) {
       throw new Error('Already in isolated state');
@@ -204,6 +242,7 @@ export class WriteAhead {
       await this.isolateForWrite();
       this.rejoin();
 
+      // Perform a full checkpoint. Write-ahead will be empty afterwards.
       await this.#checkpoint(this.#txId);
     } finally {
       this.#state = null;
@@ -216,7 +255,7 @@ export class WriteAhead {
   #advanceTxId() {
     let tx;
     while (tx = this.#mapIdToTx.get(this.#txId + 1)) {
-      // Move transaction pages to the write-ahead overlay.
+      // Add transaction pages to the write-ahead overlay.
       for (const [offset, data] of tx.pages) {
         this.#waOverlay.set(offset, data);
       }
@@ -228,10 +267,11 @@ export class WriteAhead {
   }
 
   /**
-   * 
+   * Move pages from write-ahead to main database file.
    * @param {number} [ckptId] 
    */
   async #checkpoint(ckptId) {
+    // Allow only one connection to checkpoint at a time.
     await navigator.locks.request(`${this.#zName}-ckpt`, async () => {
       // If the txId checkpoint is not specified, find the lowest txId
       // in use by any connection.
@@ -252,27 +292,42 @@ export class WriteAhead {
           }
         }
       }
-      this.#syncFn();
 
-      // Notify other connections of the checkpoint.
-      this.#broadcastChannel.postMessage({ type: 'ckpt', ckptId });
+      if (writtenOffsets.size > 0) {
+        this.#syncFn();
 
-      // Remove checkpointed transactions from write-ahead.
-      this.#repoDeleteUpTo(ckptId);
+        // Notify other connections of the checkpoint.
+        this.#broadcastChannel.postMessage({ type: 'ckpt', ckptId });
+
+        // Remove checkpointed transactions from write-ahead.
+        this.#repoDeleteUpTo(ckptId);
+      }
     });
   }
 
+  /**
+   * After a checkpoint, remove checkpointed pages from write-ahead.
+   * The checkpoint may be been done locally or by another connection.
+   * @param {number} ckptId 
+   */
   #handleCheckpoint(ckptId) {
-    // Removed checkpointed pages from the write-ahead overlay.
+    // Loop backwards from ckptId.
     let tx = { id: ckptId + 1 };
     while (tx = this.#mapIdToTx.get(tx.id - 1)) {
+      // Remove pages from write-ahead overlay.
       for (const offset of tx.pages.keys()) {
         this.#waOverlay.delete(offset);
       }
+
+      // Remove transaction.
       this.#mapIdToTx.delete(tx.id);
     }
   }
 
+  /**
+   * Initialize persistent write-ahead storage.
+   * @param {string} zName 
+   */
   async #repoInit(zName) {
     // Delete existing IndexedDB database for a new SQLite database.
     if (this.#options.create) {
@@ -292,6 +347,11 @@ export class WriteAhead {
     this.#idbDb = await idbWrap(idbRequest);
   }
   
+  /**
+   * Delete transactions through txId from persistent storage.
+   * @param {number} txId 
+   * @returns 
+   */
   async #repoDeleteUpTo(txId) {
     const idbTx = this.#idbDb.transaction('txStore', 'readwrite');
     const results = Promise.all([
@@ -363,11 +423,15 @@ export class WriteAhead {
    * @returns {Promise<number>}
    */
   async #getLowestUsedTxId() {
+    // * Get all held locks.
+    // * Find those that match the txId lock name pattern.
+    // * Extract the txId from the lock name.
+    // * Return the lowest txId found.
     const txLockRegex = new RegExp(`^(.*)-txId-#(\\d+)#$`);
     const { held } = await navigator.locks.query();
     return held
       .map(lock => lock.name.match(txLockRegex))
-      .filter(match => match !== null)
+      .filter(match => match !== null && match[1] === this.#zName)
       .map(match => parseInt(match[2]))
       .reduce((min, txId) => Math.min(min, txId), this.#txId);
   }
