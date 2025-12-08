@@ -199,8 +199,8 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
 
       let bytesRead = null;
       if (file.flags & VFS.SQLITE_OPEN_MAIN_DB) {
-        // Try reading from the OPFS write-ahead overlay first. A read on
-        // the database file is always a complete page, except when reading
+        // Try reading from the write-ahead overlays first. A read on the
+        // database file is always a complete page, except when reading
         // from the 100-byte header.
         const pageOffset = iOffset < 100 ? iOffset : 0;
         const page = file.writeAhead.read(iOffset - pageOffset);
@@ -239,9 +239,8 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
   jWrite(fileId, pData, iOffset) {
     try {
       const file = this.mapIdToFile.get(fileId);
-
       if (file.flags & VFS.SQLITE_OPEN_MAIN_DB) {
-        if (file.writeHint !== 'exclusive') {
+        if (file.writeHint === 'reserved') {
           // Write to the write-ahead overlay.
           file.writeAhead.write(iOffset, pData);
           return VFS.SQLITE_OK;
@@ -267,6 +266,12 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
   jTruncate(fileId, iSize) {
     try {
       const file = this.mapIdToFile.get(fileId);
+      if (file.flags & VFS.SQLITE_OPEN_MAIN_DB) {
+        if (file.writeHint !== 'exclusive') {
+          file.writeAhead.truncate(iSize);
+          return VFS.SQLITE_OK;
+        }
+      }
       file.accessHandle.truncate(iSize);
       return VFS.SQLITE_OK;
     } catch (e) {
@@ -283,6 +288,12 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
   jSync(fileId, flags) {
     try {
       const file = this.mapIdToFile.get(fileId);
+      if (file.flags & VFS.SQLITE_OPEN_MAIN_DB) {
+        if (file.writeHint === 'reserved') {
+          // Write-ahead sync is handled on SQLITE_FCNTL_SYNC.
+          return VFS.SQLITE_OK;
+        }
+      }
       file.accessHandle.flush();
       return VFS.SQLITE_OK;
     } catch (e) {
