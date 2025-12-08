@@ -1,5 +1,11 @@
 # @journeyapps/wa-sqlite
 
+## 1.4.1
+
+### Patch Changes
+
+- 95591d3: Clear retryOps after waiting for ops. This can fix issues on OPFSCoopSyncVFS where is an access handle failed to be obtained once, it could lock the entire connection indefinitely.
+
 ## 1.4.0
 
 ### Minor Changes
