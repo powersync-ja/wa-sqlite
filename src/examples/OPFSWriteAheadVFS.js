@@ -374,7 +374,6 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
         // This is a write transaction but we don't already have the write
         // lock. This happens when the write hint was not used, which this
         // VFS treats as an error.
-        // TODO: Arrange for the write hint to be set on unlock?
         throw new Error('Multi-statement write transaction cannot use BEGIN DEFERRED');
       }
       file.lockState = lockType;

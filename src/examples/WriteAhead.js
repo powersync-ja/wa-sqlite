@@ -49,6 +49,7 @@ export class WriteAhead {
     this.#syncFn = syncFn;
     this.#options = Object.assign(this.#options, options);
 
+    // All the asynchronous initialization is done here.
     this.#ready = (async () => {
       // Disable checkpointing by other connections until we're ready.
       await this.#updateTxLock(0);
@@ -106,9 +107,7 @@ export class WriteAhead {
 
   /**
    * Freeze our view of the database for writing.
-   * The view includes all transactions.
-   * Unfreeze the view with
-   * rejoin().
+   * The view includes all transactions. Unfreeze the view with rejoin().
    */
   async isolateForWrite() {
     this.log?.('isolateForWrite');
@@ -174,7 +173,7 @@ export class WriteAhead {
       throw new Error('Not in write isolated state');
     }
 
-    // Make a copy of the data to avoid external mutation.
+    // Save a copy of the data to avoid external mutation.
     this.#txOverlay.set(offset, data.slice());
   }
 
@@ -187,7 +186,9 @@ export class WriteAhead {
 
   getFileSize() {
     this.log?.(`getFileSize -> ${this.#txFileSize}`);
-    return this.#txFileSize;
+    // If the overlay is empty, the last file size may no longer be valid
+    // if direct changes were made to the main database file.
+    return this.#waOverlay.size ? this.#txFileSize : null;
   }
 
   commit() {
@@ -304,8 +305,9 @@ export class WriteAhead {
       if (writtenOffsets.size > 0) {
         this.#syncFn();
 
-        // Notify other connections of the checkpoint.
+        // Notify other connections and ourselves of the checkpoint.
         this.#broadcastChannel.postMessage({ type: 'ckpt', ckptId });
+        this.#handleCheckpoint(ckptId);
 
         // Remove checkpointed transactions from write-ahead.
         this.#repoDeleteUpTo(ckptId);
