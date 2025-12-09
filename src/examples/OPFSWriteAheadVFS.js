@@ -104,6 +104,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
       pOutFlags.setInt32(0, flags, true);
       return VFS.SQLITE_OK;
     } catch (e) {
+      console.error(e.stack);
       this.lastError = e;
       return VFS.SQLITE_CANTOPEN;
     }
@@ -128,6 +129,8 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
       }
       return VFS.SQLITE_OK;
     } catch (e) {
+      console.error(e.stack);
+      this.lastError = e;
       return VFS.SQLITE_IOERR_DELETE;
     }
   }
@@ -154,6 +157,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
       }
       return VFS.SQLITE_OK;
     } catch (e) {
+      console.error(e.stack);
       this.lastError = e;
       return VFS.SQLITE_IOERR_ACCESS;
     }
@@ -166,7 +170,8 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
   jClose(fileId) {
     try {
       const file = this.mapIdToFile.get(fileId);
-      if (file.flags & VFS.SQLITE_OPEN_MAIN_DB) {
+      if (file?.flags & VFS.SQLITE_OPEN_MAIN_DB) {
+        file.writeAhead.close();
         file.accessHandle.close();
         this.mapPathToFile.delete(file?.zName);
 
@@ -176,7 +181,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
 
         file.readLock.close();
         file.writeLock.close();
-      } else if (file.flags & VFS.SQLITE_OPEN_MAIN_JOURNAL) {
+      } else if (file?.flags & VFS.SQLITE_OPEN_MAIN_JOURNAL) {
         // The actual OPFS journal file is managed with the main database
         // file, so don't close the access handle here.
       }
@@ -185,6 +190,8 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
       this.mapIdToFile.delete(fileId);
       return VFS.SQLITE_OK;
     } catch (e) {
+      console.error(e.stack);
+      this.lastError = e;
       return VFS.SQLITE_IOERR_CLOSE;
     }
   }
@@ -228,6 +235,8 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
       }
       return VFS.SQLITE_OK;
     } catch (e) {
+      console.error(e.stack);
+      this.lastError = e;
       return VFS.SQLITE_IOERR_READ;
     }
   }
@@ -255,6 +264,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
       file.accessHandle.write(pData.subarray(), { at: iOffset });
       return VFS.SQLITE_OK;
     } catch (e) {
+      console.error(e.stack);
       this.lastError = e;
       return VFS.SQLITE_IOERR_WRITE;
     }
@@ -277,6 +287,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
       file.accessHandle.truncate(iSize);
       return VFS.SQLITE_OK;
     } catch (e) {
+      console.error(e.stack);
       this.lastError = e;
       return VFS.SQLITE_IOERR_TRUNCATE;
     }
@@ -299,6 +310,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
       file.accessHandle.flush();
       return VFS.SQLITE_OK;
     } catch (e) {
+      console.error(e.stack);
       this.lastError = e;
       return VFS.SQLITE_IOERR_FSYNC;
     }
@@ -322,6 +334,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
       pSize64.setBigInt64(0, BigInt(size), true);
       return VFS.SQLITE_OK;
     } catch (e) {
+      console.error(e.stack);
       this.lastError = e;
       return VFS.SQLITE_IOERR_FSTAT;
     }
@@ -379,8 +392,8 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
       file.lockState = lockType;
       return VFS.SQLITE_OK;
     } catch (e) {
+      console.error(e.stack);
       this.lastError = e;
-      console.error(e.message);
       return VFS.SQLITE_IOERR_LOCK;
     }
   }
@@ -410,6 +423,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
       }
       file.lockState = lockType;
     } catch (e) {
+      console.error(e.stack);
       this.lastError = e;
       return VFS.SQLITE_IOERR_UNLOCK;
     }
@@ -503,6 +517,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
           break;
       }
     } catch (e) {
+      console.error(e.stack);
       this.lastError = e;
       return VFS.SQLITE_IOERR;
     }
@@ -523,7 +538,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
         value |= VFS.SQLITE_IOCAP_BATCH_ATOMIC;
       }
     }
-    return value
+    return value;
   }
 
   /**
@@ -593,49 +608,51 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
   async #retryOpen(zName, flags, fileId, pOutFlags) {
     const file = this.mapPathToFile.get(zName);
     try {
-      // For simplicity, everything goes into the OPFS root directory.
-      // TODO: Support OPFS subdirectories.
-      dirHandle = dirHandle ?? await navigator.storage.getDirectory();
+      await navigator.locks.request(`${zName}#open`, async lock => {
+        // For simplicity, everything goes into the OPFS root directory.
+        // TODO: Support OPFS subdirectories.
+        dirHandle = dirHandle ?? await navigator.storage.getDirectory();
 
-      // Open the main database OPFS file.
-      let created = false;
-      let accessHandle;
-      try {
-        const fileHandle = await dirHandle.getFileHandle(zName);
-        // @ts-ignore
-        accessHandle = await fileHandle.createSyncAccessHandle({
-          mode: 'readwrite-unsafe'
-        });
-      } catch (e) {
-        if (e.name === 'NotFoundError' && (flags & VFS.SQLITE_OPEN_CREATE)) {
-          const fileHandle = await dirHandle.getFileHandle(zName, { create: true });
+        // Open the main database OPFS file.
+        let created = false;
+        let accessHandle;
+        try {
+          const fileHandle = await dirHandle.getFileHandle(zName);
           // @ts-ignore
           accessHandle = await fileHandle.createSyncAccessHandle({
             mode: 'readwrite-unsafe'
           });
-          created = true;
-        } else {
-          throw e;
+        } catch (e) {
+          if (e.name === 'NotFoundError' && (flags & VFS.SQLITE_OPEN_CREATE)) {
+            const fileHandle = await dirHandle.getFileHandle(zName, { create: true });
+            // @ts-ignore
+            accessHandle = await fileHandle.createSyncAccessHandle({
+              mode: 'readwrite-unsafe'
+            });
+            created = true;
+          } else {
+            throw e;
+          }
         }
-      }
 
-      // Pre-open the journal OPFS file here.
-      const journalPath = this.#getJournalPathFromDbPath(zName);
-      const fileHandle = await dirHandle.getFileHandle(journalPath, { create: true });
-      // @ts-ignore
-      const journalHandle = await fileHandle.createSyncAccessHandle({
-        mode: 'readwrite-unsafe'
+        // Pre-open the journal OPFS file here.
+        const journalPath = this.#getJournalPathFromDbPath(zName);
+        const fileHandle = await dirHandle.getFileHandle(journalPath, { create: true });
+        // @ts-ignore
+        const journalHandle = await fileHandle.createSyncAccessHandle({
+          mode: 'readwrite-unsafe'
+        });
+
+        // Create the write-ahead manager.
+        const writeAhead= new WriteAhead(
+          zName,
+          (offset, data) => accessHandle.write(data, { at: offset }),
+          () => accessHandle.flush(),
+          { create: created });
+        await writeAhead.ready();
+
+        file.retryResult = { accessHandle, journalHandle, writeAhead };
       });
-
-      // Create the write-ahead manager.
-      const writeAhead= new WriteAhead(
-        zName,
-        (offset, data) => accessHandle.write(data, { at: offset }),
-        () => accessHandle.flush(),
-        { create: created });
-      await writeAhead.ready();
-
-      file.retryResult = { accessHandle, journalHandle, writeAhead };
     } catch (e) {
       file.retryResult = e;
       return;

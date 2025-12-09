@@ -85,6 +85,7 @@ export class WriteAhead {
   }
 
   close() {
+    this.#txLock?.release();
     this.#broadcastChannel.onmessage = null;
     this.#broadcastChannel.close();
   }
