@@ -49,24 +49,6 @@ export class WriteAhead {
     this.#syncFn = syncFn;
     this.#options = Object.assign(this.#options, options);
 
-    this.#broadcastChannel = new BroadcastChannel(`${zName}#wa`);
-    this.#broadcastChannel.onmessage = (event) => {
-      if (event.data.type === 'tx') {
-        // New transaction from another connection.
-        /** @type {Transaction} */ const tx = event.data.tx;
-        this.#mapIdToTx.set(tx.id, tx);
-
-        if (this.#state === null) {
-          // Not in an isolated state, so advance our view of the database.
-          this.#advanceTxId();
-        }
-      } else if (event.data.type === 'ckpt') {
-        // Checkpoint notification from another connection.
-        /** @type {number} */ const ckptId = event.data.ckptId;
-        this.#handleCheckpoint(ckptId);
-      }
-    };
-
     this.#ready = (async () => {
       // Disable checkpointing by other connections until we're ready.
       await this.#updateTxLock(0);
@@ -84,6 +66,12 @@ export class WriteAhead {
       } else {
         this.#txId = emptyId;
       }
+
+      // Listen for transactions and checkpoints from other connections.
+      this.#broadcastChannel = new BroadcastChannel(`${zName}#wa`);
+      this.#broadcastChannel.onmessage = (event) => {
+        this.#handleMessage(event);
+      };
 
       // Update our tx lock to reflect the current txId.
       await this.#updateTxLock(this.#txId);
@@ -232,6 +220,11 @@ export class WriteAhead {
       // TODO: handle error
       console.error('IndexedDB write failed', e);
     });
+
+    // Automatic checkpoint.
+    // TODO: This doesn't have to be done here. It could be done periodically,
+    // or based on some heuristic, e.g. number of transactions or pages.
+    this.#checkpoint();
   }
 
   rollback() {
@@ -326,16 +319,42 @@ export class WriteAhead {
    * @param {number} ckptId 
    */
   #handleCheckpoint(ckptId) {
+    this.log?.(`#handleCheckpoint ckptId=${ckptId}`);
     // Loop backwards from ckptId.
     let tx = { id: ckptId + 1 };
     while (tx = this.#mapIdToTx.get(tx.id - 1)) {
       // Remove pages from write-ahead overlay.
-      for (const offset of tx.pages.keys()) {
-        this.#waOverlay.delete(offset);
+      for (const [offset, page] of tx.pages.entries()) {
+        // Be sure not to remove a newer version of the page.
+        const overlayPage = this.#waOverlay.get(offset);
+        if (overlayPage === page) {
+          this.#waOverlay.delete(offset);
+        }
       }
 
       // Remove transaction.
       this.#mapIdToTx.delete(tx.id);
+    }
+  }
+
+  /**
+   * @param {MessageEvent} event 
+   */
+  #handleMessage(event) {
+    this.log?.('#handleMessage', event.data);
+    if (event.data.type === 'tx') {
+      // New transaction from another connection.
+      /** @type {Transaction} */ const tx = event.data.tx;
+      this.#mapIdToTx.set(tx.id, tx);
+
+      if (this.#state === null) {
+        // Not in an isolated state, so advance our view of the database.
+        this.#advanceTxId();
+      }
+    } else if (event.data.type === 'ckpt') {
+      // Checkpoint notification from another connection.
+      /** @type {number} */ const ckptId = event.data.ckptId;
+      this.#handleCheckpoint(ckptId);
     }
   }
 
