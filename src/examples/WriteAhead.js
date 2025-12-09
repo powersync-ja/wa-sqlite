@@ -146,10 +146,8 @@ export class WriteAhead {
    * @return {Uint8Array?}
    */
   read(offset) {
-    if (offset && this.#state === null) {
-      throw new Error('Not in isolated state');
-    }
-
+    if (this.#state === null) return null;
+    
     // Look for the page in any write transaction in progress.
     // Otherwise look in the write-ahead overlay.
     return this.#txOverlay?.get(offset) ?? this.#waOverlay.get(offset) ?? null;
