@@ -32,7 +32,7 @@ let dirHandle = null;
 
 export class OPFSWriteAheadVFS extends FacadeVFS {
   lastError = null;
-  log = console.log;
+  log = null;
   
   /** @type {Map<number, FileEntry>} */ mapIdToFile = new Map();
   /** @type {Map<string, FileEntry>} */ mapPathToFile = new Map();

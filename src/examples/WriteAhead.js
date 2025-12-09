@@ -33,8 +33,6 @@ export class WriteAhead {
 
   #broadcastChannel;
 
-  log = console.log;
-
   /** @type {IDBDatabase} */ #idbDb;
 
   /**
@@ -98,7 +96,6 @@ export class WriteAhead {
    * to be synchronous). Unfreeze the view with rejoin().
    */
   isolateForRead() {
-    this.log?.('isolateForRead');
     if (this.#state !== null) {
       throw new Error('Already in isolated state');
     }
@@ -110,7 +107,6 @@ export class WriteAhead {
    * The view includes all transactions. Unfreeze the view with rejoin().
    */
   async isolateForWrite() {
-    this.log?.('isolateForWrite');
     if (this.#state !== null) {
       throw new Error('Already in isolated state');
     }
@@ -140,7 +136,6 @@ export class WriteAhead {
   }
 
   rejoin() {
-    this.log?.('rejoin');
     this.#state = null;
     this.#txOverlay = new Map();
     this.#advanceTxId();
@@ -157,10 +152,7 @@ export class WriteAhead {
 
     // Look for the page in any write transaction in progress.
     // Otherwise look in the write-ahead overlay.
-    // return this.#txOverlay?.get(offset) ?? this.#waOverlay.get(offset) ?? null;
-    const result = this.#txOverlay?.get(offset) ?? this.#waOverlay.get(offset) ?? null;
-    this.log?.(`read offset=${offset} ->`, result);
-    return result;
+    return this.#txOverlay?.get(offset) ?? this.#waOverlay.get(offset) ?? null;
   }
 
   /**
@@ -168,7 +160,6 @@ export class WriteAhead {
    * @param {Uint8Array} data 
    */
   write(offset, data) {
-    this.log?.(`write offset=${offset}`, data);
     if (this.#state !== 'write') {
       throw new Error('Not in write isolated state');
     }
@@ -185,14 +176,12 @@ export class WriteAhead {
   }
 
   getFileSize() {
-    this.log?.(`getFileSize -> ${this.#txFileSize}`);
     // If the overlay is empty, the last file size may no longer be valid
     // if direct changes were made to the main database file.
     return this.#waOverlay.size ? this.#txFileSize : null;
   }
 
   commit() {
-    this.log?.('commit');
     if (this.#txOverlay.size === 0) return;
     
     // Get the file size from the page 1 header.
@@ -229,7 +218,6 @@ export class WriteAhead {
   }
 
   rollback() {
-    this.log?.('rollback');
     // Discard transaction pages.
     this.#txOverlay = new Map();
   }
@@ -239,7 +227,6 @@ export class WriteAhead {
    * There must be no other connections reading or writing.
    */
   async flush() {
-    this.log?.('flush');
     if (this.#state !== null) {
       throw new Error('Already in isolated state');
     }
@@ -260,7 +247,6 @@ export class WriteAhead {
    * Advance the local view of the database.
    */
   #advanceTxId() {
-    this.log?.('#advanceTxId');
     let tx;
     while (tx = this.#mapIdToTx.get(this.#txId + 1)) {
       // Add transaction pages to the write-ahead overlay.
@@ -286,7 +272,6 @@ export class WriteAhead {
       if (ckptId === undefined) {
         ckptId = await this.#getLowestUsedTxId();
       }
-      this.log?.(`#checkpoint ckptId=${ckptId}`);
 
       // Starting at ckptId and going backwards (earlier), write transaction
       // pages to the main database file. Do not overwrite a page written
@@ -321,7 +306,6 @@ export class WriteAhead {
    * @param {number} ckptId 
    */
   #handleCheckpoint(ckptId) {
-    this.log?.(`#handleCheckpoint ckptId=${ckptId}`);
     // Loop backwards from ckptId.
     let tx = { id: ckptId + 1 };
     while (tx = this.#mapIdToTx.get(tx.id - 1)) {
@@ -343,7 +327,6 @@ export class WriteAhead {
    * @param {MessageEvent} event 
    */
   #handleMessage(event) {
-    this.log?.('#handleMessage', event.data);
     if (event.data.type === 'tx') {
       // New transaction from another connection.
       /** @type {Transaction} */ const tx = event.data.tx;
@@ -365,7 +348,6 @@ export class WriteAhead {
    * @param {string} zName 
    */
   async #repoInit(zName) {
-    this.log?.('#repoInit');
     // Delete existing IndexedDB database for a new SQLite database.
     if (this.#options.create) {
       await idbWrap(indexedDB.deleteDatabase(zName));
@@ -390,7 +372,6 @@ export class WriteAhead {
    * @returns 
    */
   async #repoDeleteUpTo(txId) {
-    this.log?.(`#repoDeleteUpTo txId=${txId}`);
     const idbTx = this.#idbDb.transaction('txStore', 'readwrite');
     const results = Promise.all([
       idbTx.objectStore('txStore').delete(IDBKeyRange.upperBound(txId)),
@@ -407,7 +388,6 @@ export class WriteAhead {
    * @returns {Promise<{ txList: Transaction[], emptyId: number}>}
    */
   async #repoLoad(txId) {
-    this.log?.(`#repoLoad txId=${txId}`);
     const idbTx = this.#idbDb.transaction('txStore', 'readonly');
     const idbTxStore = idbTx.objectStore('txStore');
 
@@ -427,7 +407,6 @@ export class WriteAhead {
    * @param {Transaction} tx 
    */
   async #repoStore(tx) {
-    this.log?.(`#repoStore txId=${tx.id}`, tx);
     const idbTx = this.#idbDb.transaction('txStore', 'readwrite');
     const idbTxStore = idbTx.objectStore('txStore');
     
@@ -445,7 +424,6 @@ export class WriteAhead {
    * @param {number} txId 
    */
   async #updateTxLock(txId) {
-    this.log?.(`#updateTxLock txId=${txId}`);
     // Our view of the database, i.e. the txId, is encoded into the name
     // of a lock so other connections can see it. When our txId changes,
     // we acquire a new lock and release the old one. We must not release
@@ -470,18 +448,11 @@ export class WriteAhead {
     // * Return the lowest txId found.
     const txLockRegex = new RegExp(`^(.*)-txId<(\\d+)>$`);
     const { held } = await navigator.locks.query();
-    // return held
-    //   .map(lock => lock.name.match(txLockRegex))
-    //   .filter(match => match !== null && match[1] === this.#zName)
-    //   .map(match => parseInt(match[2]))
-    //   .reduce((min, txId) => Math.min(min, txId), this.#txId);
-    const result = held
+    return held
       .map(lock => lock.name.match(txLockRegex))
       .filter(match => match !== null && match[1] === this.#zName)
       .map(match => parseInt(match[2]))
       .reduce((min, txId) => Math.min(min, txId), this.#txId);
-    this.log?.(`#getLowestUsedTxId -> ${result}`);
-    return result;
   }
 }
 
