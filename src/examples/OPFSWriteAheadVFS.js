@@ -504,7 +504,10 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
           break;
 
         case VFS.SQLITE_FCNTL_BEGIN_ATOMIC_WRITE:
+          // Allow batch atomic writes when write-ahead is in use.
+          return file.writeHint === 'reserved' ? VFS.SQLITE_OK : VFS.SQLITE_NOTFOUND;
         case VFS.SQLITE_FCNTL_COMMIT_ATOMIC_WRITE:
+          // Commit will happen on SQLITE_FCNTL_SYNC.
           return VFS.SQLITE_OK;
         case VFS.SQLITE_FCNTL_ROLLBACK_ATOMIC_WRITE:
           file.writeAhead.rollback();
@@ -529,16 +532,9 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
    * @returns {number}
    */
   jDeviceCharacteristics(pFile) {
-    // Allow batch atomic writes with write-ahead. Disallow when writing
-    // directly to the file.
-    let value = VFS.SQLITE_IOCAP_UNDELETABLE_WHEN_OPEN;
-    const file = this.mapIdToFile.get(pFile);
-    if (file.flags & VFS.SQLITE_OPEN_MAIN_DB) {
-      if (file.writeHint !== 'exclusive') {
-        value |= VFS.SQLITE_IOCAP_BATCH_ATOMIC;
-      }
-    }
-    return value;
+    return 0
+      | VFS.SQLITE_IOCAP_BATCH_ATOMIC
+      | VFS.SQLITE_IOCAP_UNDELETABLE_WHEN_OPEN;
   }
 
   /**
