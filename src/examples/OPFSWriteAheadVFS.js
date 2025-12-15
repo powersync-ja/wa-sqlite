@@ -4,6 +4,8 @@ import { Lock } from "./Lock.js";
 import { LazyLock } from "./LazyLock.js";
 import { WriteAhead } from "./WriteAhead.js";
 
+const TEMPORARY_FILE_DIR_ROOT = '.writeahead-tmp';
+
 /**
  * @typedef FileEntry
  * @property {string} zName
@@ -25,10 +27,9 @@ import { WriteAhead } from "./WriteAhead.js";
  */
 
 /**
- * Cache the OPFS root directory handle.
- * @type {FileSystemDirectoryHandle}
+ * @typedef OPFSWriteAheadOptions
+ * @property {number} [nTmpFiles]
  */
-let dirHandle = null;
 
 export class OPFSWriteAheadVFS extends FacadeVFS {
   lastError = null;
@@ -36,9 +37,13 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
   
   /** @type {Map<number, FileEntry>} */ mapIdToFile = new Map();
   /** @type {Map<string, FileEntry>} */ mapPathToFile = new Map();
+  /** @type {OPFSWriteAheadOptions} */ options = {
+    nTmpFiles: 4
+  };
 
   static async create(name, module, options) {
     const vfs = new OPFSWriteAheadVFS(name, module);
+    Object.assign(vfs.options, options);
     await vfs.isReady();
     return vfs;
   }
@@ -176,7 +181,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
         this.mapPathToFile.delete(file?.zName);
 
         file.journalHandle.close();
-        const journalPath = this.#getJournalPathFromDbPath(file.zName);
+        const journalPath = this.#getJournalNameFromDbName(file.zName);
         this.mapPathToFile.delete(journalPath);
 
         file.readLock.close();
@@ -552,11 +557,11 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
   }
 
   /**
-   * @param {string} dbPath 
+   * @param {string} dbName 
    * @returns {string}
    */
-  #getJournalPathFromDbPath(dbPath) {
-    return `${dbPath}-journal`;
+  #getJournalNameFromDbName(dbName) {
+    return `${dbName}-journal`;
   }
 
   /**
@@ -605,22 +610,32 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
     const file = this.mapPathToFile.get(zName);
     try {
       await navigator.locks.request(`${zName}#open`, async lock => {
-        // For simplicity, everything goes into the OPFS root directory.
-        // TODO: Support OPFS subdirectories.
-        dirHandle = dirHandle ?? await navigator.storage.getDirectory();
+        // Parse the path components.
+        const directoryNames = zName.split('/').filter(d => d);
+        const dbName = directoryNames.pop();
 
-        // Open the main database OPFS file.
+        // Get the OPFS directory handle.
+        let dirHandle = await navigator.storage.getDirectory();
+        const create = !!(flags & VFS.SQLITE_OPEN_CREATE);
+        for (const directoryName of directoryNames) {
+          dirHandle = await dirHandle.getDirectoryHandle(directoryName, { create });
+        }
+
+        // Open the main database OPFS file. We need to know whether the file
+        // was created or not so we know whether to remove any existing
+        // IndexedDB database with the same name. This will not be necessary
+        // if the write-ahead data is moved to OPFS entirely.
         let created = false;
         let accessHandle;
         try {
-          const fileHandle = await dirHandle.getFileHandle(zName);
+          const fileHandle = await dirHandle.getFileHandle(dbName);
           // @ts-ignore
           accessHandle = await fileHandle.createSyncAccessHandle({
             mode: 'readwrite-unsafe'
           });
         } catch (e) {
-          if (e.name === 'NotFoundError' && (flags & VFS.SQLITE_OPEN_CREATE)) {
-            const fileHandle = await dirHandle.getFileHandle(zName, { create: true });
+          if (e.name === 'NotFoundError' && create) {
+            const fileHandle = await dirHandle.getFileHandle(dbName, { create });
             // @ts-ignore
             accessHandle = await fileHandle.createSyncAccessHandle({
               mode: 'readwrite-unsafe'
@@ -632,8 +647,8 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
         }
 
         // Pre-open the journal OPFS file here.
-        const journalPath = this.#getJournalPathFromDbPath(zName);
-        const fileHandle = await dirHandle.getFileHandle(journalPath, { create: true });
+        const journalName = this.#getJournalNameFromDbName(dbName);
+        const fileHandle = await dirHandle.getFileHandle(journalName, { create: true });
         // @ts-ignore
         const journalHandle = await fileHandle.createSyncAccessHandle({
           mode: 'readwrite-unsafe'
