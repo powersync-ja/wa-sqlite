@@ -4,7 +4,9 @@ import { Lock } from "./Lock.js";
 import { LazyLock } from "./LazyLock.js";
 import { WriteAhead } from "./WriteAhead.js";
 
-const TEMPORARY_FILE_DIR_ROOT = '.writeahead-tmp';
+const LIBRARY_FILES_ROOT = '.wa-sqlite';
+
+const finalizationRegistry = new FinalizationRegistry(f => f());
 
 /**
  * @typedef FileEntry
@@ -37,9 +39,14 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
   
   /** @type {Map<number, FileEntry>} */ mapIdToFile = new Map();
   /** @type {Map<string, FileEntry>} */ mapPathToFile = new Map();
+
+  /** @type {Map<string, FileSystemSyncAccessHandle>} */ boundTempFiles = new Map();
+  /** @type {Set<FileSystemSyncAccessHandle>} */ unboundTempFiles = new Set();
   /** @type {OPFSWriteAheadOptions} */ options = {
     nTmpFiles: 4
   };
+
+  _ready;
 
   static async create(name, module, options) {
     const vfs = new OPFSWriteAheadVFS(name, module);
@@ -50,6 +57,53 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
 
   constructor(name, module) {
     super(name, module);
+    this._ready = (async () => {
+      // Ensure the library files root directory exists.
+      let dirHandle = await navigator.storage.getDirectory();
+      dirHandle = await dirHandle.getDirectoryHandle(LIBRARY_FILES_ROOT, { create: true });
+
+      // Clean up any stale session directories.
+      // @ts-ignore
+      for await (const name of dirHandle.keys()) {
+        if (name.startsWith('.session-')) {
+          // Acquire a lock on the session directory to ensure it is not in use.
+          await navigator.locks.request(name, { ifAvailable: true }, async lock => {
+            if (lock) {
+              // This directory is not in use.
+              try {
+                await dirHandle.removeEntry(name, { recursive: true });
+              } catch (e) {
+                // Ignore errors, will try again next time.
+              }
+            }
+          });
+        }
+      }
+
+      // Create our session directory.
+      const dirName = `.session-${Math.random().toString(16).slice(2)}`;
+      await new Promise(resolve => {
+        navigator.locks.request(dirName, () => {
+          resolve();
+          return new Promise(release => {
+            finalizationRegistry.register(this, release);
+          });
+        });
+      });
+      dirHandle = await dirHandle.getDirectoryHandle(dirName, { create: true });
+
+      // Create temporary files.
+      for (let i = 0; i < this.options.nTmpFiles; i++) {
+        const fileHandle= await dirHandle.getFileHandle(i.toString(), { create: true });
+        const accessHandle = await fileHandle.createSyncAccessHandle();
+        finalizationRegistry.register(this, () => accessHandle.close());
+        this.unboundTempFiles.add(accessHandle);
+      }
+    })();
+  }
+
+  isReady() {
+    return Promise.all([super.isReady(), this._ready]).then(() => true);
   }
 
  /**
@@ -61,6 +115,12 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
    */
   jOpen(zName, fileId, flags, pOutFlags) {
     try {
+      if (zName === null) {
+        // Generate a temporary filename. This will only be used as a
+        // key to map to a pre-opened temporary file access handle.
+        zName = Math.random().toString(16).slice(2);
+      }
+
       const file = this.mapPathToFile.get(zName) ?? {
         zName,
         flags,
@@ -102,7 +162,14 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
         // Initialize journal file state.
         file.accessHandle = dbFile.journalHandle;
       } else {
-        throw new Error(`unsupported file type 0x${flags.toString(16)} for ${zName}`);
+        // This is a temporary file. Use an unbound pre-opened accessHandle.
+        if (this.unboundTempFiles.size === 0) {
+          throw new Error('no temporary files available');
+        }
+        const accessHandle = this.unboundTempFiles.values().next().value;
+        this.unboundTempFiles.delete(accessHandle);
+        this.boundTempFiles.set(zName, accessHandle);
+        file.accessHandle = accessHandle;
       }
 
       this.mapIdToFile.set(fileId, file);
@@ -129,8 +196,8 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
         // We don't actually delete it, just truncate it to zero length.
         file.accessHandle.truncate(0);
         file.accessHandle.flush();
-      } else {
-        throw new Error(`Unexpected delete: ${zName}`);
+      } else if (this.boundTempFiles.has(zName)) {
+        this.#deleteTemporaryFile(file);
       }
       return VFS.SQLITE_OK;
     } catch (e) {
@@ -189,6 +256,8 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
       } else if (file?.flags & VFS.SQLITE_OPEN_MAIN_JOURNAL) {
         // The actual OPFS journal file is managed with the main database
         // file, so don't close the access handle here.
+      } else if (file?.flags & VFS.SQLITE_OPEN_DELETEONCLOSE) {
+        this.#deleteTemporaryFile(file);
       }
 
       // Disassociate fileId from file entry.
@@ -509,18 +578,28 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
           break;
 
         case VFS.SQLITE_FCNTL_BEGIN_ATOMIC_WRITE:
-          // Allow batch atomic writes when write-ahead is in use.
-          return file.writeHint === 'reserved' ? VFS.SQLITE_OK : VFS.SQLITE_NOTFOUND;
+          if (file.flags & VFS.SQLITE_OPEN_MAIN_DB) {
+            // Allow batch atomic writes when write-ahead is in use.
+            return file.writeHint === 'reserved' ? VFS.SQLITE_OK : VFS.SQLITE_NOTFOUND;
+          }
+          break;
         case VFS.SQLITE_FCNTL_COMMIT_ATOMIC_WRITE:
-          // Commit will happen on SQLITE_FCNTL_SYNC.
-          return VFS.SQLITE_OK;
+          if (file.flags & VFS.SQLITE_OPEN_MAIN_DB) {
+            // Commit will happen on SQLITE_FCNTL_SYNC.
+            return VFS.SQLITE_OK;
+          }
+          break;
         case VFS.SQLITE_FCNTL_ROLLBACK_ATOMIC_WRITE:
-          file.writeAhead.rollback();
-          return VFS.SQLITE_OK;
-
+          if (file.flags & VFS.SQLITE_OPEN_MAIN_DB) {
+            file.writeAhead.rollback();
+            return VFS.SQLITE_OK;
+          }
+          break;
         case VFS.SQLITE_FCNTL_SYNC:
-          if (file.writeHint === 'reserved') {
-            file.writeAhead.commit();
+          if (file.flags & VFS.SQLITE_OPEN_MAIN_DB) {
+            if (file.writeHint === 'reserved') {
+              file.writeAhead.commit();
+            }
           }
           break;
       }
@@ -554,6 +633,18 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
       zBuf[written] = 0;
     }
     return VFS.SQLITE_OK
+  }
+
+  /**
+   * @param {FileEntry} file 
+   */
+  #deleteTemporaryFile(file) {
+    file.accessHandle.truncate(0);
+
+    // Temporary files are not actually deleted, just returned to the pool.
+    this.mapPathToFile.delete(file.zName);
+    this.unboundTempFiles.add(file.accessHandle);
+    this.boundTempFiles.delete(file.zName);
   }
 
   /**
