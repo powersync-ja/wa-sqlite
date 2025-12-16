@@ -571,21 +571,24 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
             case 'vfs_logging':
               // This is a trace feature for debugging only.
               if (value !== null) {
-                this.log = parseInt(value) !== 0 ? console.log : null;
+                this.log = parseInt(value) !== 0 ? console.debug : null;
+                file.writeAhead.log = this.log;
               }
               return VFS.SQLITE_OK;
+            case 'wal_autocheckpoint':
+              if (value !== null) {
+                const pageCount = parseInt(value);
+                if (pageCount > 0) {
+                  file.writeAhead.setAutoCheckpoint(pageCount);
+                }
+              }
+              break;
           }
           break;
 
         case VFS.SQLITE_FCNTL_BEGIN_ATOMIC_WRITE:
-          if (file.flags & VFS.SQLITE_OPEN_MAIN_DB) {
-            // Allow batch atomic writes when write-ahead is in use.
-            return file.writeHint === 'reserved' ? VFS.SQLITE_OK : VFS.SQLITE_NOTFOUND;
-          }
-          break;
         case VFS.SQLITE_FCNTL_COMMIT_ATOMIC_WRITE:
           if (file.flags & VFS.SQLITE_OPEN_MAIN_DB) {
-            // Commit will happen on SQLITE_FCNTL_SYNC.
             return VFS.SQLITE_OK;
           }
           break;
@@ -616,9 +619,14 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
    * @returns {number}
    */
   jDeviceCharacteristics(pFile) {
-    return 0
-      | VFS.SQLITE_IOCAP_BATCH_ATOMIC
-      | VFS.SQLITE_IOCAP_UNDELETABLE_WHEN_OPEN;
+    let result = VFS.SQLITE_IOCAP_UNDELETABLE_WHEN_OPEN;
+
+    const file = this.mapIdToFile.get(pFile);
+    if (file.flags & VFS.SQLITE_OPEN_MAIN_DB && file.writeHint === 'reserved') {
+      // When write-ahead is in use, we can do batch atomic writes.
+      result |= VFS.SQLITE_IOCAP_BATCH_ATOMIC;
+    }
+    return result;
   }
 
   /**

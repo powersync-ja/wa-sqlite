@@ -1,5 +1,7 @@
 import { Lock } from './Lock.js';
 
+const DEFAULT_AUTOCHECKPOINT_PAGES = 1000;
+
 /**
  * @typedef Transaction
  * @property {number} id
@@ -13,6 +15,8 @@ import { Lock } from './Lock.js';
  */
 
 export class WriteAhead {
+  log = null;
+
   #zName;
   #writeFn;
   #syncFn;
@@ -30,8 +34,10 @@ export class WriteAhead {
   /** @type {Map<number, Uint8Array>} */ #waOverlay = new Map();
   /** @type {Map<number, Uint8Array>} */ #txOverlay = new Map();
   /** @type {Map<number, Transaction>} */ #mapIdToTx = new Map();
+  #nWriteAheadPages = 0;
 
   #broadcastChannel;
+  #autoCheckpointPages = DEFAULT_AUTOCHECKPOINT_PAGES;
 
   /** @type {IDBDatabase} */ #idbDb;
 
@@ -210,10 +216,21 @@ export class WriteAhead {
       console.error('IndexedDB write failed', e);
     });
 
-    // Automatic checkpoint.
-    // TODO: This doesn't have to be done here. It could be done periodically,
-    // or based on some heuristic, e.g. number of transactions or pages.
-    this.#checkpoint();
+    // TODO: remove this sanity check
+    let checkCount = 0;
+    for (const tx of this.#mapIdToTx.values()) {
+      checkCount += tx.pages.size;
+    }
+    if (checkCount !== this.#nWriteAheadPages) {
+      console.warn('page count mismatch', checkCount, this.#nWriteAheadPages);
+      debugger;
+    }
+
+    // Auto-checkpoint when the write-ahead overlay exceeds the
+    // checkpoint threshold.
+    if (this.#nWriteAheadPages >= this.#autoCheckpointPages) {
+      this.#checkpoint();
+    }
   }
 
   rollback() {
@@ -243,20 +260,32 @@ export class WriteAhead {
   }
 
   /**
+   * @param {number} pageCount 
+   */
+  setAutoCheckpoint(pageCount) {
+    this.#autoCheckpointPages = pageCount;
+  }
+
+  /**
    * Advance the local view of the database.
    */
   #advanceTxId() {
+    const oldTxId = this.#txId;
+
     let tx;
     while (tx = this.#mapIdToTx.get(this.#txId + 1)) {
       // Add transaction pages to the write-ahead overlay.
       for (const [offset, data] of tx.pages) {
         this.#waOverlay.set(offset, data);
       }
+      this.#nWriteAheadPages += tx.pages.size;
       this.#txId = tx.id;
       this.#txFileSize = tx.fileSize;
     }
 
-    this.#updateTxLock(this.#txId);
+    if (this.#txId !== oldTxId) {
+      this.#updateTxLock(this.#txId);
+    }
   }
 
   /**
@@ -320,6 +349,16 @@ export class WriteAhead {
       // Remove transaction.
       this.#mapIdToTx.delete(tx.id);
     }
+
+    const oldCount = this.#nWriteAheadPages;
+
+    // Recalculate the number of pages in write-ahead.
+    this.#nWriteAheadPages = 0;
+    for (const tx of this.#mapIdToTx.values()) {
+      this.#nWriteAheadPages += tx.pages.size;
+    }
+
+    this.log?.(`%cCheckpoint to txId ${ckptId}, ${oldCount} -> ${this.#nWriteAheadPages} pages in write-ahead`, 'background-color: lightgreen;');
   }
 
   /**
@@ -433,6 +472,8 @@ export class WriteAhead {
       this.#txLock = new Lock(newLockName);
       await this.#txLock.acquire('shared');
       oldLock?.release();
+
+      this.log?.(`%ctxId to ${txId}`, 'background-color: lightblue;');
     }
   }
 
