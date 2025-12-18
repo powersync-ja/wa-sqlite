@@ -487,6 +487,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
         // In this VFS, this is the only unlock transition that matters.
         file.writeLock.release();
         if (file.readLock.mode === 'exclusive') {
+          // TODO: Consider lazy release here as well.
           file.readLock.release();
         } else {
           file.readLock.releaseLazy();
@@ -579,7 +580,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
               if (value !== null) {
                 const pageCount = parseInt(value);
                 if (pageCount > 0) {
-                  file.writeAhead.setAutoCheckpoint(pageCount);
+                  file.writeAhead.options.autoCheckpointPages = pageCount;
                 }
               }
               break;

@@ -20,15 +20,16 @@ const DEFAULT_HEARTBEAT_ACTION_DELAY = 50;
 
 export class WriteAhead {
   log = null;
+  options = {
+    create: false,
+    autoCheckpointPages: DEFAULT_AUTOCHECKPOINT_PAGES,
+    heartbeatInterval: DEFAULT_HEARTBEAT_INTERVAL,
+    heartbeatActionDelay: DEFAULT_HEARTBEAT_ACTION_DELAY
+  };
 
   #zName;
   #writeFn;
   #syncFn;
-  #options = {
-    create: false,
-    heartbeatInterval: DEFAULT_HEARTBEAT_INTERVAL,
-    heartbeatActionDelay: DEFAULT_HEARTBEAT_ACTION_DELAY
-  };
 
   #ready;
   /** @type {'read'|'write'} */ #state = null
@@ -43,7 +44,6 @@ export class WriteAhead {
   #nWriteAheadPages = 0;
 
   #broadcastChannel;
-  #autoCheckpointPages = DEFAULT_AUTOCHECKPOINT_PAGES;
   /** @type {NodeJS.Timeout} */ #heartbeatTimer;
 
   /** @type {IDBDatabase} */ #idbDb;
@@ -58,7 +58,7 @@ export class WriteAhead {
     this.#zName = zName;
     this.#writeFn = writeFn;
     this.#syncFn = syncFn;
-    this.#options = Object.assign(this.#options, options);
+    this.options = Object.assign(this.options, options);
 
     // All the asynchronous initialization is done here.
     this.#ready = (async () => {
@@ -239,7 +239,7 @@ export class WriteAhead {
 
     // Auto-checkpoint when the write-ahead overlay exceeds the
     // checkpoint threshold.
-    if (this.#nWriteAheadPages >= this.#autoCheckpointPages) {
+    if (this.#nWriteAheadPages >= this.options.autoCheckpointPages) {
       this.#checkpoint();
     }
   }
@@ -268,13 +268,6 @@ export class WriteAhead {
     } finally {
       this.#state = null;
     }
-  }
-
-  /**
-   * @param {number} pageCount 
-   */
-  setAutoCheckpoint(pageCount) {
-    this.#autoCheckpointPages = pageCount;
   }
 
   /**
@@ -417,16 +410,16 @@ export class WriteAhead {
               this.#handleMessage(
                 new MessageEvent('message', { data: { type: 'tx', tx: txList[0] } }));
             }
-          }, this.#options.heartbeatActionDelay);
+          }, this.options.heartbeatActionDelay);
         }
       }
     } catch (e) {
       console.error('Heartbeat failed', e);
     }
 
-    // Schedule next heartbeat. Add a bit of skew to reduce correlated
+    // Schedule next heartbeat. Add a bit of jitter to decorrelate
     // heartbeats across multiple connections.
-    const delay = this.#options.heartbeatInterval * (0.9 + 0.2 * Math.random());
+    const delay = this.options.heartbeatInterval * (0.9 + 0.2 * Math.random());
     this.#heartbeatTimer = setTimeout(() => {
       this.#heartbeat();
     }, delay);
@@ -438,7 +431,7 @@ export class WriteAhead {
    */
   async #repoInit(zName) {
     // Delete existing IndexedDB database for a new SQLite database.
-    if (this.#options.create) {
+    if (this.options.create) {
       await idbWrap(indexedDB.deleteDatabase(zName));
     }
 
