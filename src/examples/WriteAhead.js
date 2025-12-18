@@ -1,6 +1,8 @@
 import { Lock } from './Lock.js';
 
 const DEFAULT_AUTOCHECKPOINT_PAGES = 1000;
+const DEFAULT_HEARTBEAT_INTERVAL = 3000;
+const DEFAULT_HEARTBEAT_ACTION_DELAY = 50;
 
 /**
  * @typedef Transaction
@@ -12,6 +14,8 @@ const DEFAULT_AUTOCHECKPOINT_PAGES = 1000;
 /**
  * @typedef WriteAheadOptions
  * @property {boolean} [create=false] true if database is being created
+ * @property {number} [heartbeatInterval]
+ * @property {number} [heartbeatActionDelay]
  */
 
 export class WriteAhead {
@@ -21,7 +25,9 @@ export class WriteAhead {
   #writeFn;
   #syncFn;
   #options = {
-    create: false
+    create: false,
+    heartbeatInterval: DEFAULT_HEARTBEAT_INTERVAL,
+    heartbeatActionDelay: DEFAULT_HEARTBEAT_ACTION_DELAY
   };
 
   #ready;
@@ -38,6 +44,7 @@ export class WriteAhead {
 
   #broadcastChannel;
   #autoCheckpointPages = DEFAULT_AUTOCHECKPOINT_PAGES;
+  /** @type {NodeJS.Timeout} */ #heartbeatTimer;
 
   /** @type {IDBDatabase} */ #idbDb;
 
@@ -80,6 +87,11 @@ export class WriteAhead {
 
       // Update our tx lock to reflect the current txId.
       await this.#updateTxLock(this.#txId);
+
+      // Schedule first heartbeat. The heartbeat is a guard against a crash
+      // in another context between persisting a transaction and broadcasting
+      // it.
+      this.#heartbeat();
     })();
   }
 
@@ -94,6 +106,7 @@ export class WriteAhead {
     this.#txLock?.release();
     this.#broadcastChannel.onmessage = null;
     this.#broadcastChannel.close();
+    clearTimeout(this.#heartbeatTimer);
   }
 
   /**
@@ -119,23 +132,16 @@ export class WriteAhead {
     }
     this.#state = 'write';
 
+    // Heartbeat is not needed while writing because we will be current.
+    clearTimeout(this.#heartbeatTimer);
+    this.#heartbeatTimer = null;
+
     // Ensure that we have all previous transactions.
     const { txList, emptyId } = await this.#repoLoad(this.#txId);
     if (txList.length > 0) {
       for (const tx of txList) {
         this.#mapIdToTx.set(tx.id, tx);
-
-        // This transaction wasn't already seen. It may just be a
-        // race condition, but it could have been a page crash
-        // between writing to IndexedDB and broadcasting. In case
-        // of the latter, broadcast the transaction again.
-        // TODO: To avoid redundant broadcasts, consider scheduling
-        // a broadcast after a short delay and canceling if another
-        // broadcast is seen in the meantime. Alternatively, remove
-        // this code and schedule periodic checks.
-        this.#broadcastChannel.postMessage({ type: 'tx', tx });
       }
-
       this.#advanceTxId();
     } else {
       this.#txId = emptyId;
@@ -143,6 +149,11 @@ export class WriteAhead {
   }
 
   rejoin() {
+    if (this.#state === 'write') {
+      // Resume heartbeat after write isolation.
+      this.#heartbeat();
+    }
+
     this.#state = null;
     this.#txOverlay = new Map();
     this.#advanceTxId();
@@ -382,6 +393,46 @@ export class WriteAhead {
   }
 
   /**
+   * Periodic check for missing transactions.
+   */
+  async #heartbeat() {
+    try {
+      if (this.#heartbeatTimer) {
+        // Check whether we are missing the next transaction.
+        const nextLocalTxId = this.#txId + 1;
+        const lastRepoTxId = await this.#repoLastTxId();
+        if (this.#txId < lastRepoTxId && !this.#mapIdToTx.has(nextLocalTxId)) {
+          // There are transactions in the repository that we have not received
+          // a broadcast for. This could be due to a crash in another context
+          // or simply unlucky timing. In case of bad timing, use a brief
+          // delay to allow any pending broadcasts to arrive.
+          setTimeout(async () => {
+            // Repeat the check.
+            if (this.#txId < nextLocalTxId && !this.#mapIdToTx.has(nextLocalTxId)) {
+              // Still missing the next transaction, so load it from the
+              // repository.
+              const { txList } = await this.#repoLoad(this.#txId);
+
+              // Simulate a broadcast message for this transaction.
+              this.#handleMessage(
+                new MessageEvent('message', { data: { type: 'tx', tx: txList[0] } }));
+            }
+          }, this.#options.heartbeatActionDelay);
+        }
+      }
+    } catch (e) {
+      console.error('Heartbeat failed', e);
+    }
+
+    // Schedule next heartbeat. Add a bit of skew to reduce correlated
+    // heartbeats across multiple connections.
+    const delay = this.#options.heartbeatInterval * (0.9 + 0.2 * Math.random());
+    this.#heartbeatTimer = setTimeout(() => {
+      this.#heartbeat();
+    }, delay);
+  }
+
+  /**
    * Initialize persistent write-ahead storage.
    * @param {string} zName 
    */
@@ -421,6 +472,34 @@ export class WriteAhead {
   }
 
   /**
+   * Get the last transaction id for the database.
+   * @returns {Promise<number>}
+   */
+  async #repoLastTxId() {
+    const idbTx = this.#idbDb.transaction('txStore', 'readonly');
+    const idbTxStore = idbTx.objectStore('txStore');
+    const marker = await new Promise((resolve, reject) => {
+      // Use a cursor with 'prev' direction to get the last key
+      // in the store. This will be the end marker, which will
+      // be the *next* transaction id.
+      const request = idbTxStore.openKeyCursor(null, 'prev');
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (cursor) {
+          resolve(cursor.key);
+        } else {
+          reject(new Error('Invalid repository state'));
+        }
+      };
+      request.onerror = () => {
+        reject(request.error);
+      };
+    });
+    idbTx.commit();
+    return marker - 1;
+  }
+
+  /**
    * Load transactions from persistent storage starting from txId + 1.
    * @param {number} txId
    * @returns {Promise<{ txList: Transaction[], emptyId: number}>}
@@ -432,6 +511,7 @@ export class WriteAhead {
     // Get all transactions with id > txId.
     const request = idbTxStore.getAll(IDBKeyRange.lowerBound(txId, true));
     /** @type {Transaction[]} */ const txList = await idbWrap(request);
+    idbTx.commit();
 
     // The last object in the store is the end marker, which contains
     // no data. Its purpose is to provide the txId when write-ahead
@@ -490,7 +570,7 @@ export class WriteAhead {
     const { held } = await navigator.locks.query();
     return held
       .map(lock => lock.name.match(txLockRegex))
-      .filter(match => match !== null && match[1] === this.#zName)
+      .filter(match => match?.[1] === this.#zName)
       .map(match => parseInt(match[2]))
       .reduce((min, txId) => Math.min(min, txId), this.#txId);
   }
