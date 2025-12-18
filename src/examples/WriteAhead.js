@@ -202,6 +202,13 @@ export class WriteAhead {
     
     // Get the file size from the page 1 header.
     const page1 = this.#txOverlay.get(0);
+    if (!page1) {
+      // The change counter on page 1 must be updated on every transaction.
+      // If page 1 is not here then this must be a non-batch-atomic rollback
+      // where page 1 has not yet been written.
+      this.#txOverlay.clear();
+      return;
+    }
     const dataView = new DataView(page1.buffer, page1.byteOffset, 100);
     const pageSize = dataView.getUint16(16);
     const pageCount = dataView.getUint32(28);
@@ -246,7 +253,7 @@ export class WriteAhead {
 
   rollback() {
     // Discard transaction pages.
-    this.#txOverlay = new Map();
+    this.#txOverlay.clear();
   }
   
   /**

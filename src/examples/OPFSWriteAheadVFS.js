@@ -20,7 +20,7 @@ const finalizationRegistry = new FinalizationRegistry(f => f());
  * 
  * @property {'reserved'|'exclusive'} [writeHint]
  * @property {'normal'|'exclusive'|null} [lockingMode]
- * @property {number} [lockState]
+ * @property {number} [lockState] SQLITE_LOCK_*
  * @property {LazyLock} [readLock]
  * @property {Lock} [writeLock]
  * @property {number} [timeout]
@@ -161,6 +161,8 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
 
         // Initialize journal file state.
         file.accessHandle = dbFile.journalHandle;
+      } else if (flags & (VFS.SQLITE_OPEN_WAL | VFS.SQLITE_OPEN_SUPER_JOURNAL)) {
+        throw new Error('WAL and super-journal files are not supported');
       } else {
         // This is a temporary file. Use an unbound pre-opened accessHandle.
         if (this.unboundTempFiles.size === 0) {
@@ -569,7 +571,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
                   break;
               }
               break;
-            case 'vfs_logging':
+            case 'vfs_trace':
               // This is a trace feature for debugging only.
               if (value !== null) {
                 this.log = parseInt(value) !== 0 ? console.debug : null;
@@ -623,7 +625,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
     let result = VFS.SQLITE_IOCAP_UNDELETABLE_WHEN_OPEN;
 
     const file = this.mapIdToFile.get(pFile);
-    if (file.flags & VFS.SQLITE_OPEN_MAIN_DB && file.writeHint === 'reserved') {
+    if (file.writeHint === 'reserved') {
       // When write-ahead is in use, we can do batch atomic writes.
       result |= VFS.SQLITE_IOCAP_BATCH_ATOMIC;
     }
@@ -680,7 +682,8 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
           await file.writeAhead.isolateForWrite();
           break;
         case 'exclusive':
-          // This transaction will write directly to the database.
+          // This transaction will write directly to the database,
+          // i.e. not using write-ahead. Get exclusive access.
           await file.readLock.acquire('exclusive', file.timeout);
           await file.writeLock.acquire('exclusive');
 
@@ -688,6 +691,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
           await file.writeAhead.flush();
           break;
         default:
+          // This transaction will only read.
           await file.readLock.acquire('shared', file.timeout);
           break;
       }
