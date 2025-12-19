@@ -29,6 +29,7 @@ export class WriteAhead {
 
   #zName;
   #writeFn;
+  #truncateFn;
   #syncFn;
 
   #ready;
@@ -44,19 +45,21 @@ export class WriteAhead {
   #nWriteAheadPages = 0;
 
   #broadcastChannel;
-  /** @type {NodeJS.Timeout} */ #heartbeatTimer;
+  /** @type {number} */ #heartbeatTimer;
 
   /** @type {IDBDatabase} */ #idbDb;
 
   /**
    * @param {string} zName 
-   * @param {(offset: number, data: Uint8Array) => void} writeFn 
+   * @param {(offset: number, data: Uint8Array) => void} writeFn
+   * @param {(newSize: number) => void} truncateFn
    * @param {() => void} syncFn
    * @param {WriteAheadOptions} options 
    */
-  constructor(zName, writeFn, syncFn, options) {
+  constructor(zName, writeFn, truncateFn, syncFn, options) {
     this.#zName = zName;
     this.#writeFn = writeFn;
+    this.#truncateFn = truncateFn;
     this.#syncFn = syncFn;
     this.options = Object.assign(this.options, options);
 
@@ -205,14 +208,13 @@ export class WriteAhead {
     if (!page1) {
       // The change counter on page 1 must be updated on every transaction.
       // If page 1 is not here then this must be a non-batch-atomic rollback
-      // where page 1 has not yet been written.
+      // before page 1 was modified, and we can discard the transaction.
       this.#txOverlay.clear();
       return;
     }
     const dataView = new DataView(page1.buffer, page1.byteOffset, 100);
-    const pageSize = dataView.getUint16(16);
     const pageCount = dataView.getUint32(28);
-    const fileSize = (pageSize === 1 ? 65536 : pageSize) * pageCount;
+    const fileSize = page1.byteLength * pageCount;
 
     // Create a new transaction.
     const tx = {
@@ -305,7 +307,9 @@ export class WriteAhead {
    */
   async #checkpoint(ckptId) {
     // Allow only one connection to checkpoint at a time.
-    await navigator.locks.request(`${this.#zName}-ckpt`, async () => {
+    /** @type {LockOptions} */
+    const lockOptions = { mode: 'exclusive', ifAvailable: true };
+    await navigator.locks.request(`${this.#zName}-ckpt`, lockOptions, async () => {
       // If the txId checkpoint is not specified, find the lowest txId
       // in use by any connection.
       if (ckptId === undefined) {
@@ -316,10 +320,19 @@ export class WriteAhead {
       // pages to the main database file. Do not overwrite a page written
       // by a later transaction.
       const writtenOffsets = new Set();
+      let fileSize = 0;
       let tx = { id: ckptId + 1 };
       while (tx = this.#mapIdToTx.get(tx.id - 1)) {
+        if (tx.id === ckptId) {
+          // Set the file size from the latest transaction. This may be
+          // unnecessary as SQLite is not known to reduce the database size
+          // except with VACUUM.
+          fileSize = tx.fileSize;
+          this.#truncateFn(fileSize);
+        }
+
         for (const [offset, data] of tx.pages) {
-          if (!writtenOffsets.has(offset)) {
+          if (offset < fileSize && !writtenOffsets.has(offset)) {
             this.#writeFn(offset, data);
             writtenOffsets.add(offset);
           }
@@ -419,6 +432,8 @@ export class WriteAhead {
             }
           }, this.options.heartbeatActionDelay);
         }
+
+        // TODO: move checkpointing here
       }
     } catch (e) {
       console.error('Heartbeat failed', e);

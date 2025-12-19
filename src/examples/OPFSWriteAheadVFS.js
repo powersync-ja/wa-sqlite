@@ -730,7 +730,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
         // IndexedDB database with the same name. This will not be necessary
         // if the write-ahead data is moved to OPFS entirely.
         let created = false;
-        let accessHandle;
+        /** @type {FileSystemSyncAccessHandle} */ let accessHandle;
         try {
           const fileHandle = await dirHandle.getFileHandle(dbName);
           // @ts-ignore
@@ -762,6 +762,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
         const writeAhead= new WriteAhead(
           zName,
           (offset, data) => accessHandle.write(data, { at: offset }),
+          (newSize) => accessHandle.truncate(newSize),
           () => accessHandle.flush(),
           { create: created });
         await writeAhead.ready();
