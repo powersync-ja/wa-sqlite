@@ -297,8 +297,14 @@ export class WriteAhead {
    * @param {LockOptions} [lockOptions]
    */
   async #checkpoint(ckptId, lockOptions = { ifAvailable: true }) {
-    // Allow only one connection to checkpoint at a time.
-    await navigator.locks.request(`${this.#zName}-ckpt`, lockOptions, async () => {
+    // Allow only one connection to checkpoint at a time. The default
+    // lockOptions argument will skip everything if another connection
+    // is already checkpointing. This is suitable for heartbeat-initiated
+    // checkpoints. For a checkpoint initiated by flush(), we should
+    // block until we can checkpoint ourselves.
+    await navigator.locks.request(`${this.#zName}-ckpt`, lockOptions, async lock => {
+      if (!lock) return;
+
       // If the txId checkpoint is not specified, find the lowest txId
       // in use by any connection.
       if (ckptId === undefined) {
