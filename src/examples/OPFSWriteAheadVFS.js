@@ -18,6 +18,7 @@ const finalizationRegistry = new FinalizationRegistry(f => f());
  * @property {*} [retryResult]
  * @property {FileSystemSyncAccessHandle} [journalHandle]
  * 
+ * @property {boolean} [useWriteAhead]
  * @property {'reserved'|'exclusive'} [writeHint]
  * @property {'normal'|'exclusive'|null} [lockingMode]
  * @property {number} [lockState] SQLITE_LOCK_*
@@ -150,28 +151,36 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
         file.readLock = new LazyLock(`${zName}#read`);
         file.writeLock = new Lock(`${zName}#write`);
         file.timeout = -1;
+        file.useWriteAhead = true;
         file.writeHint = null;
       } else if (flags & VFS.SQLITE_OPEN_MAIN_JOURNAL) {
         // A journal file is managed with its main database so look that up.
-        const dbFilename = zName.slice(0, -"-journal".length);
-        const dbFile = this.mapPathToFile.get(dbFilename);
+        const dbFile = this.#getDbFileFromJournalName(zName);
         if (!dbFile) {
           throw new Error(`database file not found for journal ${zName}`);
         }
 
-        // Initialize journal file state.
-        file.accessHandle = dbFile.journalHandle;
+        // Determine whether to use the public journal (which is hot or
+        // could become hot) or a private journal from the session directory.
+        // This is necessary because read connections can test a journal
+        // for hotness while a write-ahead transaction is in progress.
+        if (!dbFile.useWriteAhead || dbFile.journalHandle.getSize() > 0) { 
+          // Either write-ahead is not being used, or a hot journal is being
+          // opened for recovery. Use the public journal.
+          file.accessHandle = dbFile.journalHandle;
+        } else if (dbFile.useWriteAhead && dbFile.lockState > VFS.SQLITE_LOCK_SHARED) {
+          // The journal is being opened for a write-ahead transaction.
+          // This journal can never be hot so don't expose it to other
+          // connections.
+          file.accessHandle = this.#openTemporaryFile(zName);
+        } else {
+          throw new Error('unexpected journal file conditions');
+        }
       } else if (flags & (VFS.SQLITE_OPEN_WAL | VFS.SQLITE_OPEN_SUPER_JOURNAL)) {
         throw new Error('WAL and super-journal files are not supported');
       } else {
         // This is a temporary file. Use an unbound pre-opened accessHandle.
-        if (this.unboundTempFiles.size === 0) {
-          throw new Error('no temporary files available');
-        }
-        const accessHandle = this.unboundTempFiles.values().next().value;
-        this.unboundTempFiles.delete(accessHandle);
-        this.boundTempFiles.set(zName, accessHandle);
-        file.accessHandle = accessHandle;
+        file.accessHandle = this.#openTemporaryFile(zName);
       }
 
       this.mapIdToFile.set(fileId, file);
@@ -191,15 +200,16 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
    */
   jDelete(zName, syncDir) {
     try {
-      const file = this.mapPathToFile.get(zName);
-      if (!file) throw new Error(`file not found: ${zName}`);
-      if (file.flags & VFS.SQLITE_OPEN_MAIN_JOURNAL) {
-        // The actual OPFS journal file is managed with the main database.
-        // We don't actually delete it, just truncate it to zero length.
-        file.accessHandle.truncate(0);
-        file.accessHandle.flush();
-      } else if (this.boundTempFiles.has(zName)) {
+      if (this.boundTempFiles.has(zName)) {
+        const file = this.mapPathToFile.get(zName);
         this.#deleteTemporaryFile(file);
+      } else if (zName.endsWith('-journal')) {
+        const dbFile = this.#getDbFileFromJournalName(zName);
+        dbFile?.journalHandle.truncate(0);
+        dbFile?.journalHandle.flush();
+        this.mapPathToFile.delete(zName);
+      } else {
+        throw new Error(`unexpected file deletion: ${zName}`);
       }
       return VFS.SQLITE_OK;
     } catch (e) {
@@ -217,18 +227,28 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
    */
   jAccess(zName, flags, pResOut) {
     try {
-      const file = this.mapPathToFile.get(zName);
-      if (file) {
-        if ((file.flags & VFS.SQLITE_OPEN_MAIN_JOURNAL) &&
-            file.accessHandle.getSize() === 0) {
-          // Treat an empty journal file as non-existent.
-          pResOut.setInt32(0, 0, true);
-        } else {
-          pResOut.setInt32(0, 1, true);
+      // Special case main journal files.
+      if (zName.endsWith('-journal')) {
+        const dbFile = this.#getDbFileFromJournalName(zName);
+        if (dbFile) {
+          if (dbFile.lockState <= VFS.SQLITE_LOCK_SHARED) {
+            // SQLite is testing for a hot journal. Journals created in the
+            // session directory for write-ahead transactions are never hot,
+            // i.e. they are used only for rollback. So here we look for
+            // the status of the public journal.
+            if (dbFile.journalHandle.getSize() === 0) {
+              // Treat an empty journal file as non-existent.
+              pResOut.setInt32(0, 0, true);
+            } else {
+              pResOut.setInt32(0, 1, true);
+            }
+          }
+          return VFS.SQLITE_OK;
         }
-      } else {
-        pResOut.setInt32(0, 0, true);
       }
+
+      const file = this.mapPathToFile.get(zName);
+      pResOut.setInt32(0, file ? 1 : 0, true);
       return VFS.SQLITE_OK;
     } catch (e) {
       console.error(e.stack);
@@ -327,7 +347,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
     try {
       const file = this.mapIdToFile.get(fileId);
       if (file.flags & VFS.SQLITE_OPEN_MAIN_DB) {
-        if (file.writeHint === 'reserved') {
+        if (file.useWriteAhead) {
           // Write to the write-ahead overlay.
           file.writeAhead.write(iOffset, pData);
           return VFS.SQLITE_OK;
@@ -355,7 +375,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
     try {
       const file = this.mapIdToFile.get(fileId);
       if (file.flags & VFS.SQLITE_OPEN_MAIN_DB) {
-        if (file.writeHint !== 'exclusive') {
+        if (file.useWriteAhead) {
           file.writeAhead.truncate(iSize);
           return VFS.SQLITE_OK;
         }
@@ -378,7 +398,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
     try {
       const file = this.mapIdToFile.get(fileId);
       if (file.flags & VFS.SQLITE_OPEN_MAIN_DB) {
-        if (file.writeHint === 'reserved') {
+        if (file.useWriteAhead) {
           // Write-ahead sync is handled on SQLITE_FCNTL_SYNC.
           return VFS.SQLITE_OK;
         }
@@ -427,18 +447,6 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
       if (file.lockState === VFS.SQLITE_LOCK_NONE && lockType === VFS.SQLITE_LOCK_SHARED) {
         // We do all our locking work in this transition.
         if (file.retryResult === null) {
-          // Manage some special cases.
-          if (file.accessHandle.getSize() === 0) {
-            // The database has not been created. We will need a write lock.
-            file.writeHint = 'exclusive';
-          } else if (file.lockingMode === 'exclusive') {
-            // PRAGMA locking_mode=EXCLUSIVE was set.
-            file.writeHint = 'exclusive';
-          } else if (file.journalHandle.getSize() > 0) {
-            // There is a hot journal. We will need a write lock.
-            file.writeHint = 'exclusive';
-          }
-
           if (file.writeHint || file.readLock.mode !== 'shared') {
             // Asynchronous lock acquisition is needed. Set retryResult to
             // non-null so when SQLite calls jUnlock() it knows not to reset
@@ -586,6 +594,18 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
                 }
               }
               break;
+            case 'write_ahead':
+              // This is a custom pragma to enable or disable write-ahead.
+              // By default, write-ahead is enabled.
+              if (value !== null) {
+                file.useWriteAhead = parseInt(value) !== 0;
+              } else {
+                const s = (file.useWriteAhead ? '1' : '0');
+                const ptr = this._module._sqlite3_malloc64(s.length + 1);
+                this._module.stringToUTF8(s, ptr, s.length + 1);
+                pArg.setUint32(0, ptr, true);
+              }
+              return VFS.SQLITE_OK;
           }
           break;
 
@@ -603,7 +623,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
           break;
         case VFS.SQLITE_FCNTL_SYNC:
           if (file.flags & VFS.SQLITE_OPEN_MAIN_DB) {
-            if (file.writeHint === 'reserved') {
+            if (file.useWriteAhead) {
               file.writeAhead.commit();
             }
           }
@@ -625,7 +645,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
     let result = VFS.SQLITE_IOCAP_UNDELETABLE_WHEN_OPEN;
 
     const file = this.mapIdToFile.get(pFile);
-    if (file.writeHint === 'reserved') {
+    if (file.useWriteAhead) {
       // When write-ahead is in use, we can do batch atomic writes.
       result |= VFS.SQLITE_IOCAP_BATCH_ATOMIC;
     }
@@ -644,6 +664,20 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
       zBuf[written] = 0;
     }
     return VFS.SQLITE_OK
+  }
+
+  /**
+   * @param {string} zName 
+   * @returns {FileSystemSyncAccessHandle}
+   */
+  #openTemporaryFile(zName) {
+    if (this.unboundTempFiles.size === 0) {
+      throw new Error('no temporary files available');
+    }
+    const accessHandle = this.unboundTempFiles.values().next().value;
+    this.unboundTempFiles.delete(accessHandle);
+    this.boundTempFiles.set(zName, accessHandle);
+    return accessHandle;
   }
 
   /**
@@ -667,6 +701,15 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
   }
 
   /**
+   * @param {string} journalName 
+   * @returns {FileEntry}
+   */
+  #getDbFileFromJournalName(journalName) {
+    const dbFilename = journalName.slice(0, -'-journal'.length);
+    return this.mapPathToFile.get(dbFilename);
+  }
+
+  /**
    * Handle asynchronous jLock() tasks.
    * @param {number} pFile 
    * @param {number} lockType 
@@ -676,19 +719,20 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
     try {
       switch (file.writeHint) {
         case 'reserved':
-          // This transaction will be write-ahead. We only need
-          // writeLock, not readLock.
-          await file.writeLock.acquire('exclusive', file.timeout);
-          await file.writeAhead.isolateForWrite();
-          break;
         case 'exclusive':
-          // This transaction will write directly to the database,
-          // i.e. not using write-ahead. Get exclusive access.
-          await file.readLock.acquire('exclusive', file.timeout);
-          await file.writeLock.acquire('exclusive');
+          if (file.useWriteAhead) {
+            // Write-ahead transactions only need writeLock, not readLock.
+            await file.writeLock.acquire('exclusive', file.timeout);
+            await file.writeAhead.isolateForWrite();
+          } else {
+            // This transaction will write directly to the database,
+            // i.e. not using write-ahead. Get exclusive access.
+            await file.readLock.acquire('exclusive', file.timeout);
+            await file.writeLock.acquire('exclusive');
 
-          // Transfer everything in write-ahead to the OPFS file.
-          await file.writeAhead.flush();
+            // Transfer everything in write-ahead to the OPFS file.
+            await file.writeAhead.flush();
+          }
           break;
         default:
           // This transaction will only read.
