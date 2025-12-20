@@ -420,7 +420,7 @@ export class WriteAhead {
           // a broadcast for. This could be due to a crash in another context
           // or simply unlucky timing. In case of bad timing, use a brief
           // delay to allow any pending broadcasts to arrive.
-          setTimeout(async () => {
+          self.setTimeout(async () => {
             // Repeat the check.
             if (this.#txId < nextLocalTxId && !this.#mapIdToTx.has(nextLocalTxId)) {
               // Still missing the next transaction, so load it from the
@@ -441,7 +441,7 @@ export class WriteAhead {
     // Schedule next heartbeat. Add a bit of jitter to decorrelate
     // heartbeats across multiple connections.
     const delay = this.options.heartbeatInterval * (0.9 + 0.2 * Math.random());
-    this.#heartbeatTimer = setTimeout(() => {
+    this.#heartbeatTimer = self.setTimeout(() => {
       this.#heartbeat();
     }, delay);
   }

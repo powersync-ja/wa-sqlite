@@ -33,7 +33,7 @@ export class Lock {
       let timeoutId;
       if (timeout > 0) {
         const abortController = new AbortController();
-        timeoutId = setTimeout(() => {
+        timeoutId = self.setTimeout(() => {
           abortController.abort();
         }, timeout);
         options.signal = abortController.signal;
