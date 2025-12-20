@@ -235,22 +235,6 @@ export class WriteAhead {
       // TODO: handle error
       console.error('IndexedDB write failed', e);
     });
-
-    // TODO: remove this sanity check
-    let checkCount = 0;
-    for (const tx of this.#mapIdToTx.values()) {
-      checkCount += tx.pages.size;
-    }
-    if (checkCount !== this.#nWriteAheadPages) {
-      console.warn('page count mismatch', checkCount, this.#nWriteAheadPages);
-      debugger;
-    }
-
-    // Auto-checkpoint when the write-ahead overlay exceeds the
-    // checkpoint threshold.
-    if (this.#nWriteAheadPages >= this.options.autoCheckpointPages) {
-      this.#checkpoint();
-    }
   }
 
   rollback() {
@@ -272,10 +256,15 @@ export class WriteAhead {
       await this.isolateForWrite();
       this.rejoin();
 
+      // Disable heartbeat.
+      clearTimeout(this.#heartbeatTimer);
+      this.#heartbeatTimer = null;
+
       // Perform a full checkpoint. Write-ahead will be empty afterwards.
       await this.#checkpoint(this.#txId);
     } finally {
       this.#state = null;
+      this.#heartbeat();
     }
   }
 
@@ -411,6 +400,12 @@ export class WriteAhead {
   async #heartbeat() {
     try {
       if (this.#heartbeatTimer) {
+        // Auto-checkpoint when the write-ahead overlay exceeds the
+        // checkpoint threshold.
+        if (this.#nWriteAheadPages >= this.options.autoCheckpointPages) {
+          this.#checkpoint();
+        }
+        
         // Check whether we are missing the next transaction.
         const nextLocalTxId = this.#txId + 1;
         const lastRepoTxId = await this.#repoLastTxId();
@@ -432,8 +427,6 @@ export class WriteAhead {
             }
           }, this.options.heartbeatActionDelay);
         }
-
-        // TODO: move checkpointing here
       }
     } catch (e) {
       console.error('Heartbeat failed', e);
