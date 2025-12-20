@@ -105,7 +105,8 @@ export class WriteAhead {
     return this.#ready;
   }
 
-  close() {
+  async close() {
+    await this.#ready;
     this.#txLock?.release();
     this.#broadcastChannel.onmessage = null;
     this.#broadcastChannel.close();
@@ -229,7 +230,7 @@ export class WriteAhead {
     this.#advanceTxId();
 
     // Persist the transaction to storage, then send to other connections.
-    this.#repoStore(tx).then(() => {
+    this.#ready = this.#repoStore(tx).then(() => {
       this.#broadcastChannel.postMessage({ type: 'tx', tx });
     }, e => {
       // TODO: handle error
@@ -293,11 +294,10 @@ export class WriteAhead {
   /**
    * Move pages from write-ahead to main database file.
    * @param {number} [ckptId] 
+   * @param {LockOptions} [lockOptions]
    */
-  async #checkpoint(ckptId) {
+  async #checkpoint(ckptId, lockOptions = { ifAvailable: true }) {
     // Allow only one connection to checkpoint at a time.
-    /** @type {LockOptions} */
-    const lockOptions = { mode: 'exclusive', ifAvailable: true };
     await navigator.locks.request(`${this.#zName}-ckpt`, lockOptions, async () => {
       // If the txId checkpoint is not specified, find the lowest txId
       // in use by any connection.
