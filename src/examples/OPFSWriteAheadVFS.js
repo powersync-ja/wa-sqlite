@@ -453,6 +453,11 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
         // We do all our locking work in this transition.
         if (file.retryResult === null) {
           if (file.lockingMode === 'exclusive') {
+            // SQLite exclusive locking mode really means that no unlocking
+            // is done, not that the locking state is immediately EXCLUSIVE.
+            // This is a problem if the first transaction after setting
+            // exclusive locking mode does not come with a write hint, so
+            // we force the write hint here.
             file.writeHint = 'exclusive';
           }
 
@@ -472,8 +477,14 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
           throw file.retryResult;
         }
 
+        // We have acquired the needed locks, either synchronously or
+        // via retry.
         file.retryResult = null;
         if (file.writeHint === null) {
+          // Ensure that our read-only view of the database does not change
+          // while in the SHARED lock state. The corresponding method
+          // isolateForWrite() is not called in this method, but instead
+          // in retryLock() because it is asynchronous.
           file.writeAhead.isolateForRead();
         }
       } else if (lockType >= VFS.SQLITE_LOCK_RESERVED && !file.writeLock.mode) {
@@ -529,6 +540,10 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
    * @returns {number}
    */
   jCheckReservedLock(pFile, pResOut) {
+    // This function is only called in the SHARED lock state, and when
+    // a potentially hot journal file exists. Such a journal can only
+    // be created without using write-ahead, and such a connection
+    // cannot co-exist with this connection in SHARED.
     pResOut.setInt32(0, 0, true);
     return VFS.SQLITE_OK;
   }
@@ -556,9 +571,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
               // EXCLUSIVE if value is '2'.
               switch (value) {
                 case '1':
-                  if (file.writeHint !== 'exclusive') {
-                    file.writeHint = 'reserved';
-                  }
+                  file.writeHint = 'reserved';
                   break;
                 case '2':
                   file.writeHint = 'exclusive';
@@ -621,6 +634,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
           }
           break;
 
+        // Support SQLite batch atomic write transactions.
         case VFS.SQLITE_FCNTL_BEGIN_ATOMIC_WRITE:
         case VFS.SQLITE_FCNTL_COMMIT_ATOMIC_WRITE:
           if (file.flags & VFS.SQLITE_OPEN_MAIN_DB) {
@@ -633,6 +647,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
             return VFS.SQLITE_OK;
           }
           break;
+
         case VFS.SQLITE_FCNTL_SYNC:
           if (file.flags & VFS.SQLITE_OPEN_MAIN_DB) {
             if (file.useWriteAhead) {
@@ -686,6 +701,8 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
     if (this.unboundTempFiles.size === 0) {
       throw new Error('no temporary files available');
     }
+
+    // Bind an access handle from the temporary pool.
     const accessHandle = this.unboundTempFiles.values().next().value;
     this.unboundTempFiles.delete(accessHandle);
     this.boundTempFiles.set(zName, accessHandle);
@@ -815,7 +832,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
         });
 
         // Create the write-ahead manager.
-        const writeAhead= new WriteAhead(
+        const writeAhead = new WriteAhead(
           zName,
           (offset, data) => accessHandle.write(data, { at: offset }),
           (newSize) => accessHandle.truncate(newSize),

@@ -146,11 +146,9 @@ export class WriteAhead {
     clearTimeout(this.#heartbeatTimer);
     this.#heartbeatTimer = null;
 
-    // Wait for our previous write transaction to complete. Any asynchronous
-    // error with that transaction will be ignored. Configure an
-    // asyncErrorHandler to receive those errors.
-    await this.#ready.catch(() => {});
-    this.#ready = Promise.resolve();
+    // Wait for our previous write transaction to complete. Note that
+    // any error will be caught and passed to asyncErrorHandler.
+    await this.#ready;
 
     // Ensure that we have all previous transactions.
     const { txList, emptyId } = await this.#repoLoad(this.#txId);
@@ -168,10 +166,11 @@ export class WriteAhead {
     if (this.#state === 'write') {
       // Resume heartbeat after write isolation.
       this.#heartbeat();
+    } else {
+      // Catch up on new transactions that arrived while isolated.
+      this.#advanceTxId();
     }
-
     this.#state = null;
-    this.#advanceTxId();
   }
 
   /**
@@ -179,8 +178,6 @@ export class WriteAhead {
    * @return {Uint8Array?}
    */
   read(offset) {
-    if (this.#state === null) return null;
-    
     // First look for the page in any write transaction in progress.
     // Note that txOverlay may contain data even if not in write state,
     // because a previous transaction is not final until a successful
@@ -240,7 +237,9 @@ export class WriteAhead {
 
     // Persist the transaction to storage, then notify.
     const complete = this.#repoStore(tx).then(() => {
-      // Incorporate the transaction into the local view.
+      // Incorporate the transaction into the local view. Note that this
+      // is not done synchronously so reads from the next transaction
+      // may be done using #txOverlay with the view not yet advanced.
       const payload = { type: 'tx', tx };
       this.#handleMessage(new MessageEvent('message', { data: payload }));
       this.#txOverlay = new Map();
@@ -274,7 +273,7 @@ export class WriteAhead {
       await this.isolateForWrite();
       this.rejoin();
 
-      // Disable heartbeat.
+      // Disable heartbeat as a minor optimization.
       clearTimeout(this.#heartbeatTimer);
       this.#heartbeatTimer = null;
 
@@ -292,6 +291,9 @@ export class WriteAhead {
   #advanceTxId() {
     const oldTxId = this.#txId;
 
+    // Look up the next transaction one at a time. This will stop if there
+    // are any missing transactions, which will be filled in later either
+    // for write isolation or by the heartbeat.
     let tx;
     while (tx = this.#mapIdToTx.get(this.#txId + 1)) {
       // Add transaction pages to the write-ahead overlay.
@@ -299,6 +301,7 @@ export class WriteAhead {
         this.#waOverlay.set(offset, data);
       }
       this.#nWriteAheadPages += tx.pages.size;
+
       this.#txId = tx.id;
       this.#txFileSize = tx.fileSize;
     }
@@ -352,13 +355,14 @@ export class WriteAhead {
       }
 
       if (writtenOffsets.size > 0) {
+        // Ensure data is safely in the file.
         this.#syncFn();
 
         // Notify other connections and ourselves of the checkpoint.
         this.#broadcastChannel.postMessage({ type: 'ckpt', ckptId });
         this.#handleCheckpoint(ckptId);
 
-        // Remove checkpointed transactions from write-ahead.
+        // Remove checkpointed transactions from persistent storage.
         this.#repoDeleteUpTo(ckptId);
       }
     });
@@ -418,7 +422,7 @@ export class WriteAhead {
   }
 
   /**
-   * Periodic check for missing transactions.
+   * Periodic check for missing transactions and checkpointing.
    */
   async #heartbeat() {
     try {
