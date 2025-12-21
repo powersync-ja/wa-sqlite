@@ -452,6 +452,10 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
       if (file.lockState === VFS.SQLITE_LOCK_NONE && lockType === VFS.SQLITE_LOCK_SHARED) {
         // We do all our locking work in this transition.
         if (file.retryResult === null) {
+          if (file.lockingMode === 'exclusive') {
+            file.writeHint = 'exclusive';
+          }
+
           if (file.writeHint || file.readLock.mode !== 'shared') {
             // Asynchronous lock acquisition is needed. Set retryResult to
             // non-null so when SQLite calls jUnlock() it knows not to reset
@@ -603,6 +607,9 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
               // This is a custom pragma to enable or disable write-ahead.
               // By default, write-ahead is enabled.
               if (value !== null) {
+                if (file.lockState !== VFS.SQLITE_LOCK_NONE) {
+                  throw new Error('cannot change write_ahead mode while database is locked');
+                }
                 file.useWriteAhead = parseInt(value) !== 0;
               } else {
                 const s = (file.useWriteAhead ? '1' : '0');

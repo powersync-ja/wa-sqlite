@@ -279,7 +279,7 @@ export class WriteAhead {
       this.#heartbeatTimer = null;
 
       // Perform a full checkpoint. Write-ahead will be empty afterwards.
-      await this.#checkpoint(this.#txId);
+      await this.#checkpoint(this.#txId, { ifAvailable: false });
     } finally {
       this.#state = null;
       this.#heartbeat();
