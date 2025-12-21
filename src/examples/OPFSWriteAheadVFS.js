@@ -5,6 +5,7 @@ import { LazyLock } from "./LazyLock.js";
 import { WriteAhead } from "./WriteAhead.js";
 
 const LIBRARY_FILES_ROOT = '.wa-sqlite';
+const DEFAULT_TEMP_FILES = 6;
 
 const finalizationRegistry = new FinalizationRegistry(f => f());
 
@@ -32,6 +33,10 @@ const finalizationRegistry = new FinalizationRegistry(f => f());
 /**
  * @typedef OPFSWriteAheadOptions
  * @property {number} [nTmpFiles]
+ * @property {number} [autoCheckpointPages]
+ * @property {number} [heartbeatInterval]
+ * @property {number} [heartbeatActionDelay]
+ * @property {(error: Error) => void} [asyncErrorHandler]
  */
 
 export class OPFSWriteAheadVFS extends FacadeVFS {
@@ -44,7 +49,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
   /** @type {Map<string, FileSystemSyncAccessHandle>} */ boundTempFiles = new Map();
   /** @type {Set<FileSystemSyncAccessHandle>} */ unboundTempFiles = new Set();
   /** @type {OPFSWriteAheadOptions} */ options = {
-    nTmpFiles: 4
+    nTmpFiles: DEFAULT_TEMP_FILES
   };
 
   _ready;
@@ -808,7 +813,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
           (offset, data) => accessHandle.write(data, { at: offset }),
           (newSize) => accessHandle.truncate(newSize),
           () => accessHandle.flush(),
-          { create: created });
+          Object.assign({ create: created }, this.options));
         await writeAhead.ready();
 
         file.retryResult = { accessHandle, journalHandle, writeAhead };

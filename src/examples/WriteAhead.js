@@ -14,17 +14,20 @@ const DEFAULT_HEARTBEAT_ACTION_DELAY = 50;
 /**
  * @typedef WriteAheadOptions
  * @property {boolean} [create=false] true if database is being created
+ * @property {number} [autoCheckpointPages]
  * @property {number} [heartbeatInterval]
  * @property {number} [heartbeatActionDelay]
+ * @property {(error: Error) => void} [asyncErrorHandler]
  */
 
 export class WriteAhead {
   log = null;
-  options = {
+  /** @type {WriteAheadOptions} */ options = {
     create: false,
     autoCheckpointPages: DEFAULT_AUTOCHECKPOINT_PAGES,
     heartbeatInterval: DEFAULT_HEARTBEAT_INTERVAL,
-    heartbeatActionDelay: DEFAULT_HEARTBEAT_ACTION_DELAY
+    heartbeatActionDelay: DEFAULT_HEARTBEAT_ACTION_DELAY,
+    asyncErrorHandler: (error) => { console.error(error); }
   };
 
   #zName;
@@ -32,7 +35,7 @@ export class WriteAhead {
   #truncateFn;
   #syncFn;
 
-  #ready;
+  /** @type {Promise<any>} */ #ready;
   /** @type {'read'|'write'} */ #state = null
 
   #txId = 0;
@@ -106,11 +109,14 @@ export class WriteAhead {
   }
 
   async close() {
+    // Stop asynchronous maintenance.
+    this.#broadcastChannel.onmessage = null;
+    clearTimeout(this.#heartbeatTimer);
+
+    // Wait for any pending commit to complete.
     await this.#ready;
     this.#txLock?.release();
-    this.#broadcastChannel.onmessage = null;
     this.#broadcastChannel.close();
-    clearTimeout(this.#heartbeatTimer);
   }
 
   /**
@@ -140,6 +146,12 @@ export class WriteAhead {
     clearTimeout(this.#heartbeatTimer);
     this.#heartbeatTimer = null;
 
+    // Wait for our previous write transaction to complete. Any asynchronous
+    // error with that transaction will be ignored. Configure an
+    // asyncErrorHandler to receive those errors.
+    await this.#ready.catch(() => {});
+    this.#ready = Promise.resolve();
+
     // Ensure that we have all previous transactions.
     const { txList, emptyId } = await this.#repoLoad(this.#txId);
     if (txList.length > 0) {
@@ -159,7 +171,6 @@ export class WriteAhead {
     }
 
     this.#state = null;
-    this.#txOverlay = new Map();
     this.#advanceTxId();
   }
 
@@ -170,9 +181,12 @@ export class WriteAhead {
   read(offset) {
     if (this.#state === null) return null;
     
-    // Look for the page in any write transaction in progress.
-    // Otherwise look in the write-ahead overlay.
-    return this.#txOverlay?.get(offset) ?? this.#waOverlay.get(offset) ?? null;
+    // First look for the page in any write transaction in progress.
+    // Note that txOverlay may contain data even if not in write state,
+    // because a previous transaction is not final until a successful
+    // store to the write-ahead repo. If the page is not found in the
+    // transaction overlay, look in the write-ahead overlay.
+    return this.#txOverlay.get(offset) ?? this.#waOverlay.get(offset) ?? null;
   }
 
   /**
@@ -224,18 +238,21 @@ export class WriteAhead {
       fileSize
     };
 
-    // Incorporate the transaction into the local view.
-    this.#mapIdToTx.set(tx.id, tx);
-    this.#txOverlay = new Map();
-    this.#advanceTxId();
+    // Persist the transaction to storage, then notify.
+    const complete = this.#repoStore(tx).then(() => {
+      // Incorporate the transaction into the local view.
+      const payload = { type: 'tx', tx };
+      this.#handleMessage(new MessageEvent('message', { data: payload }));
+      this.#txOverlay = new Map();
 
-    // Persist the transaction to storage, then send to other connections.
-    this.#ready = this.#repoStore(tx).then(() => {
-      this.#broadcastChannel.postMessage({ type: 'tx', tx });
+      // Send the transaction to other connections.
+      this.#broadcastChannel.postMessage(payload);
     }, e => {
-      // TODO: handle error
-      console.error('IndexedDB write failed', e);
+      this.#txOverlay = new Map();
+      this.options.asyncErrorHandler(e);
     });
+
+    this.#ready = Promise.all([this.#ready, complete]);
   }
 
   rollback() {
@@ -601,13 +618,16 @@ function idbWrap(request) {
       request.oncomplete = () => {
         resolve();
       };
+      request.onabort = () => {
+        reject(request.error ?? new Error('transaction aborted'));
+      };
     } else {
       request.onsuccess = () => {
         resolve(request.result);
       };
+      request.onerror = () => {
+        reject(request.error);
+      };
     }
-    request.onerror = () => {
-      reject(request.error);
-    };
   });
 }
