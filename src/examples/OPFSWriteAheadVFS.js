@@ -594,10 +594,21 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
               }
               return VFS.SQLITE_OK;
             case 'locking_mode':
+              // The IndexedDB implementation of write-ahead must persist
+              // asynchronously, so the next write transaction must wait
+              // for that to complete successfully. With normal locking we
+              // can do that in retryLock(), but with exclusive locking
+              // retryLock() won't be called for the next transaction. We
+              // could perform a retry on the first write, but for now
+              // just disable write-ahead in exclusive locking mode.
               switch (value?.toLowerCase()) {
                 case 'normal':
+                  file.lockingMode = 'normal';
+                  file.useWriteAhead = true;
+                  break;
                 case 'exclusive':
-                  file.lockingMode = value.toLowerCase();
+                  file.lockingMode = 'exclusive';
+                  file.useWriteAhead = false;
                   break;
               }
               break;
@@ -617,8 +628,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
               }
               break;
             case 'write_ahead':
-              // This is a custom pragma to enable or disable write-ahead.
-              // By default, write-ahead is enabled.
+              // For testing purposes only: enable or disable write-ahead mode.
               if (value !== null) {
                 if (file.lockState !== VFS.SQLITE_LOCK_NONE) {
                   throw new Error('cannot change write_ahead mode while database is locked');

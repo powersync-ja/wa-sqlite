@@ -154,7 +154,12 @@ export class WriteAhead {
     const { txList, emptyId } = await this.#repoLoad(this.#txId);
     if (txList.length > 0) {
       for (const tx of txList) {
-        this.#mapIdToTx.set(tx.id, tx);
+        // Don't overwrite any transactions we already have as that can
+        // produce subtle bugs when we need to know if a page belongs to
+        // a particular transaction.
+        if (!this.#mapIdToTx.has(tx.id)) {
+          this.#mapIdToTx.set(tx.id, tx);
+        }
       }
       this.#advanceTxId();
     } else {
@@ -237,11 +242,20 @@ export class WriteAhead {
 
     // Persist the transaction to storage, then notify.
     const complete = this.#repoStore(tx).then(() => {
-      // Incorporate the transaction into the local view. Note that this
-      // is not done synchronously so reads from the next transaction
-      // may be done using #txOverlay with the view not yet advanced.
+      // Incorporate the transaction into the local view. This is a tricky
+      // situation because we can't accept our own transaction until it
+      // is persistently stored asynchronously here, while in the meantime
+      // we may have moved on to another transaction.
+      //
+      // If the next transaction is a write transaction, isolateForWrite()
+      // will wait for this Promise to complete. If the next transaction
+      // is a read transaction, it may start before this Promise completes,
+      // so it will read from #txOverlay until then.
       const payload = { type: 'tx', tx };
       this.#handleMessage(new MessageEvent('message', { data: payload }));
+      if (this.#state === 'read') {
+        this.#advanceTxId();
+      }
       this.#txOverlay = new Map();
 
       // Send the transaction to other connections.
@@ -406,13 +420,16 @@ export class WriteAhead {
    */
   #handleMessage(event) {
     if (event.data.type === 'tx') {
-      // New transaction from another connection.
+      // New transaction from another connection. Don't use it if we
+      // already have it.
       /** @type {Transaction} */ const tx = event.data.tx;
-      this.#mapIdToTx.set(tx.id, tx);
+      if (!this.#mapIdToTx.has(tx.id)) {
+        this.#mapIdToTx.set(tx.id, tx);
 
-      if (this.#state === null) {
-        // Not in an isolated state, so advance our view of the database.
-        this.#advanceTxId();
+        if (this.#state === null) {
+          // Not in an isolated state, so advance our view of the database.
+          this.#advanceTxId();
+        }
       }
     } else if (event.data.type === 'ckpt') {
       // Checkpoint notification from another connection.
