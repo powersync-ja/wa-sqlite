@@ -146,10 +146,6 @@ export class WriteAhead {
     clearTimeout(this.#heartbeatTimer);
     this.#heartbeatTimer = null;
 
-    // Wait for our previous write transaction to complete. Note that
-    // any error will be caught and passed to asyncErrorHandler.
-    await this.#ready;
-
     // Ensure that we have all previous transactions.
     const { txList, emptyId } = await this.#repoLoad(this.#txId);
     if (txList.length > 0) {
@@ -165,6 +161,12 @@ export class WriteAhead {
     } else {
       this.#txId = emptyId;
     }
+
+    // Wait for our previous write transaction to complete. The required
+    // synchronization is for #txOverlay to be reset *before* a write()
+    // is called to populate it. Not certain whether this is necessary,
+    // even with worst case scheduling, but the cost is minor if not.
+    await this.#ready;
   }
 
   rejoin() {
