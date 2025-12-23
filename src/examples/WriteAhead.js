@@ -220,13 +220,12 @@ export class WriteAhead {
   }
 
   commit() {
-    if (this.#txOverlay.size === 0) return;
-    
     // Get the file size from the page 1 header.
     const page1 = this.#txOverlay.get(0);
     if (!page1) {
-      // The change counter on page 1 must be updated on every transaction.
-      // If page 1 is not here then this must be a non-batch-atomic rollback
+      // The change counter on page 1 must be updated on every transaction
+      // (not with SQLite WAL mode, but that doesn't apply here). If
+      // page 1 is not here then this must be a non-batch-atomic rollback
       // before page 1 was modified, and we can discard the transaction.
       this.#txOverlay.clear();
       return;
@@ -273,6 +272,16 @@ export class WriteAhead {
   rollback() {
     // Discard transaction pages.
     this.#txOverlay.clear();
+
+    // Restore original file size.
+    const page1 = this.#waOverlay.get(0);
+    if (page1) {
+      const dataView = new DataView(page1.buffer, page1.byteOffset, 100);
+      const pageCount = dataView.getUint32(28);
+      this.#txFileSize = page1.byteLength * pageCount;
+    } else {
+      this.#txFileSize = 0;
+    }
   }
   
   /**
@@ -295,6 +304,7 @@ export class WriteAhead {
 
       // Perform a full checkpoint. Write-ahead will be empty afterwards.
       await this.#checkpoint(this.#txId, { ifAvailable: false });
+      console.assert(this.#waOverlay.size === 0, 'write-ahead not empty after flush');
     } finally {
       this.#state = null;
       this.#heartbeat();
