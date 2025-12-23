@@ -459,6 +459,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
             // exclusive locking mode does not come with a write hint, so
             // we force the write hint here.
             file.writeHint = 'exclusive';
+            file.useWriteAhead = false;
           }
 
           if (file.writeHint || file.readLock.mode !== 'shared') {
@@ -515,6 +516,11 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
       // progress. In that case, don't change any locks.
       if (!file.retryResult && lockType === VFS.SQLITE_LOCK_NONE) {
         // In this VFS, this is the only unlock transition that matters.
+        if (file.useWriteAhead) {
+          // Exit write-ahead isolation.
+          file.writeAhead.rejoin();
+        }
+
         file.writeLock.release();
         if (file.readLock.mode === 'exclusive') {
           // TODO: Consider lazy release here as well.
@@ -524,7 +530,9 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
         }
         file.writeHint = null;
 
-        file.writeAhead.rejoin();
+        if (file.lockingMode === 'normal') {
+          file.useWriteAhead = true;
+        }
       }
       file.lockState = lockType;
     } catch (e) {
@@ -594,21 +602,14 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
               }
               return VFS.SQLITE_OK;
             case 'locking_mode':
-              // The IndexedDB implementation of write-ahead must persist
-              // asynchronously, so the next write transaction must wait
-              // for that to complete successfully. With normal locking we
-              // can do that in retryLock(), but with exclusive locking
-              // retryLock() won't be called for the next transaction. We
-              // could perform a retry on the first write, but for now
-              // just disable write-ahead in exclusive locking mode.
+              // Track SQLite locking mode. We will use write-ahead only in
+              // normal locking mode.
               switch (value?.toLowerCase()) {
                 case 'normal':
                   file.lockingMode = 'normal';
-                  file.useWriteAhead = true;
                   break;
                 case 'exclusive':
                   file.lockingMode = 'exclusive';
-                  file.useWriteAhead = false;
                   break;
               }
               break;
