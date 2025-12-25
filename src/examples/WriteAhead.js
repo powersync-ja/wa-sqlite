@@ -285,7 +285,16 @@ export class WriteAhead {
   }
   
   /**
-   * Flush the write-ahead transactions to the main database file.
+   * @param {'normal'|'full'} mode 
+   */
+  sync(mode) {
+    // IndexedDB can only guarantee durability asynchronously, so this
+    // does nothing. If persistence is changed to OPFS then there can
+    // be durability options.
+  }
+
+  /**
+   * Flush all write-ahead transactions to the main database file.
    * There must be no other connections reading or writing.
    */
   async flush() {

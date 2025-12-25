@@ -404,11 +404,19 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
       const file = this.mapIdToFile.get(fileId);
       if (file.flags & VFS.SQLITE_OPEN_MAIN_DB) {
         if (file.useWriteAhead) {
-          // Write-ahead sync is handled on SQLITE_FCNTL_SYNC.
-          return VFS.SQLITE_OK;
+          // TODO: Track PRAGMA synchronous setting.
+          file.writeAhead.sync('normal');
+        } else {
+          file.accessHandle.flush();
         }
+      } else if (!this.boundTempFiles.has(file.zName)) {
+        // Persistent journal file requires sync.
+        file.accessHandle.flush();
+      } else {
+        // This is a temporary file so sync is not needed.
+        // Temporary journals are only used for rollback by the
+        // connection that created them, not for recovery.
       }
-      file.accessHandle.flush();
       return VFS.SQLITE_OK;
     } catch (e) {
       console.error(e.stack);
