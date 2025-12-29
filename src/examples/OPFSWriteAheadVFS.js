@@ -7,7 +7,7 @@ import { WriteAhead } from "./WriteAhead.js";
 const LIBRARY_FILES_ROOT = '.wa-sqlite';
 const DEFAULT_TEMP_FILES = 6;
 
-const finalizationRegistry = new FinalizationRegistry(f => f());
+const finalizationRegistry = new FinalizationRegistry((/** @type {() => void} */ f) => f());
 
 /**
  * @typedef FileEntry
@@ -90,8 +90,10 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
       const dirName = `.session-${Math.random().toString(16).slice(2)}`;
       await new Promise(resolve => {
         navigator.locks.request(dirName, () => {
+          // @ts-ignore
           resolve();
           return new Promise(release => {
+            // @ts-ignore
             finalizationRegistry.register(this, release);
           });
         });

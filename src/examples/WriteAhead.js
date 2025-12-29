@@ -525,7 +525,7 @@ export class WriteAhead {
       store.put({ id: 1 }, 1);
     };
 
-    this.#idbDb = await idbWrap(idbRequest);
+    this.#idbDb = /** @type {IDBDatabase} */ (await idbWrap(idbRequest));
   }
   
   /**
@@ -569,7 +569,7 @@ export class WriteAhead {
       };
     });
     idbTx.commit();
-    return marker - 1;
+    return /** @type {number} */ (marker) - 1;
   }
 
   /**
@@ -583,7 +583,7 @@ export class WriteAhead {
 
     // Get all transactions with id > txId.
     const request = idbTxStore.getAll(IDBKeyRange.lowerBound(txId, true));
-    /** @type {Transaction[]} */ const txList = await idbWrap(request);
+    const txList = /** @type {Transaction[]} */ (await idbWrap(request));
     idbTx.commit();
 
     // The last object in the store is the end marker, which contains
@@ -651,8 +651,9 @@ export class WriteAhead {
 
 /**
  * Convert IndexedDB callbacks to Promises.
- * @param {IDBRequest|IDBTransaction} request 
- * @returns 
+ * @template T
+ * @param {IDBRequest<T>|IDBTransaction} request 
+ * @returns {Promise<T|void>}
  */
 function idbWrap(request) {
   return new Promise((resolve, reject) => {
