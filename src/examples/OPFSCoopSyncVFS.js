@@ -532,7 +532,7 @@ export class OPFSCoopSyncVFS extends FacadeVFS {
         } catch (e) {
           this.log?.(`failed to create access handles for ${file.path}`, e);
           // Close any of the potentially opened access handles
-          this.#releaseAccessHandle(file);
+          await this.#releaseAccessHandle(file);
           throw e;
         } finally {
           file.persistentFile.isRequestInProgress = false;
