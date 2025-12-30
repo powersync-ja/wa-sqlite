@@ -873,8 +873,11 @@ export function Factory(Module) {
       // Wait for all pending retry operations to complete. This is
       // normally empty on the first loop iteration.
       if (Module.retryOps.length) {
-        await Promise.all(Module.retryOps);
-        Module.retryOps = [];
+        try {
+          await Promise.all(Module.retryOps);
+        } finally {
+          Module.retryOps = [];
+        }
       }
       
       rc = await f();
