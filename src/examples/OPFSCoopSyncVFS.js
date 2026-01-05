@@ -532,7 +532,7 @@ export class OPFSCoopSyncVFS extends FacadeVFS {
         } catch (e) {
           this.log?.(`failed to create access handles for ${file.path}`, e);
           // Close any of the potentially opened access handles
-          await this.#releaseAccessHandle(file);
+          this.#releaseAccessHandle(file);
           throw e;
         } finally {
           file.persistentFile.isRequestInProgress = false;
@@ -546,8 +546,8 @@ export class OPFSCoopSyncVFS extends FacadeVFS {
   /**
    * @param {File} file 
    */
-  async #releaseAccessHandle(file) {
-    DB_RELATED_FILE_SUFFIXES.forEach(async suffix => {
+  #releaseAccessHandle(file) {
+    DB_RELATED_FILE_SUFFIXES.forEach(suffix => {
       const persistentFile = this.persistentFiles.get(file.path + suffix);
       if (persistentFile) {
         persistentFile.accessHandle?.close();
