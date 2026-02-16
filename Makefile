@@ -1,8 +1,8 @@
 # dependencies
 
-BASE_SQLITE_VERSION=3.50.1
+BASE_SQLITE_VERSION=3.51.2
 SQLITE_VERSION = version-${BASE_SQLITE_VERSION}
-MC_SQLITE_VERSION = 2.1.3
+MC_SQLITE_VERSION = 2.2.7
 SQLITE_TARBALL_URL = https://www.sqlite.org/src/tarball/$(SQLITE_VERSION)/sqlite.tar.gz
 MC_SQLITE_URL = https://github.com/utelle/SQLite3MultipleCiphers/releases/download/v${MC_SQLITE_VERSION}/sqlite3mc-${MC_SQLITE_VERSION}-sqlite-${BASE_SQLITE_VERSION}-amalgamation.zip
 
