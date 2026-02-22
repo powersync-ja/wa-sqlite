@@ -21,7 +21,7 @@ export class Lock {
   /**
    * @param {'shared'|'exclusive'} mode 
    * @param {number} timeout -1 for infinite, 0 for poll, >0 for milliseconds
-   * @return {Promise<boolean>} true if lock acquired, false on timeout
+   * @return {Promise<boolean>} true if lock acquired, false on failed poll
    */
   async acquire(mode, timeout = -1) {
     if (this.#releaser) {
@@ -54,10 +54,6 @@ export class Lock {
           resolve(true);
         })
       }).catch(e => {
-        if (e.name === 'AbortError') {
-          // Timeout expired while waiting for the lock.
-          return resolve(false);
-        }
         return reject(e);
       });
     });
