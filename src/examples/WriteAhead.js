@@ -403,24 +403,8 @@ export class WriteAhead {
         // Full checkpoint, use the current WAL file txId.
         ckptId = this.#waFile.txId;
 
-        // Wait for all connections to reach this txId. Each connection
-        // acquires a shared lock whose name contains the database name,
-        // the minimum and maximum txId it has in mapIdToTx. We want all
-        // maximum txId values to be ckptId.
-        let pendingLockNames = [];
-        do {
-          // Wait for connections with lower maximum txIds. When a
-          // connection advances its txId, it will release its previous
-          // lock and acquire a new one.
-          await Promise.all(
-            pendingLockNames.map(name => navigator.locks.request(name, async () => {}))
-          );
-
-          // Refresh the list of locks with lower txIds.
-          pendingLockNames = (await this.#getTxIdLocks())
-            .filter(value => value.maxTxId < ckptId)
-            .map(value => value.name);
-        } while (pendingLockNames.length > 0);
+        // Wait for all connections to reach this txId.
+        await this.#waitForTxIdLocks(value => value.maxTxId >= ckptId);
         this.log?.(`%c#checkpoint full txId ${ckptId}`, 'background-color: lightgreen;');
       } else {
         // Not a full checkpoint, so find the lowest txId in use by any
@@ -488,6 +472,9 @@ export class WriteAhead {
       }
 
       if (options.isRestart) {
+        // Wait for all connections to clear their overlay.
+        await this.#waitForTxIdLocks(value => value.minTxId > ckptId);
+        
         this.#waFile.reset();
       }
     });
@@ -634,6 +621,25 @@ export class WriteAhead {
       };
     }
     return null;
+  }
+
+  /**
+   * Wait for all txId locks that fail the provided predicate.
+   * @param {(lock: {name: string, minTxId: number, maxTxId: number}) => boolean} predicate 
+   */
+  async #waitForTxIdLocks(predicate) {
+    /** @type {string[]} */ let failingLockNames = [];
+    do {
+      // Wait for all connections that fail the predicate.
+      await Promise.all(
+        failingLockNames.map(name => navigator.locks.request(name, async () => {}))
+      );
+
+      // Refresh the list of failing locks.
+      failingLockNames = (await this.#getTxIdLocks())
+        .filter(value => !predicate(value))
+        .map(value => value.name);
+    } while (failingLockNames.length > 0);
   }
 }
 

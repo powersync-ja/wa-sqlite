@@ -851,7 +851,6 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
   async #pendingCheckpoint(file, mode) {
     try {
       if (mode !== 'passive') {
-        await file.readLock.acquire('exclusive', file.timeout);
         await file.writeLock.acquire('exclusive');
       }
       
@@ -862,7 +861,6 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
       }
       throw e;
     } finally {
-      file.readLock.release();
       file.writeLock.release();
     }
   }
