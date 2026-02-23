@@ -25,7 +25,7 @@ const finalizationRegistry = new FinalizationRegistry((/** @type {() => void} */
  * @property {'normal'|'exclusive'|null} [lockingMode]
  * @property {number} [lockState] SQLITE_LOCK_*
  * @property {LazyLock} [readLock]
- * @property {Lock} [writeLock]
+ * @property {LazyLock} [writeLock]
  * @property {number} [timeout]
  * 
  * @property {WriteAhead} [writeAhead]
@@ -157,7 +157,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
         file.lockState = VFS.SQLITE_LOCK_NONE;
         file.lockingMode = null;
         file.readLock = new LazyLock(`${zName}#read`);
-        file.writeLock = new Lock(`${zName}#write`);
+        file.writeLock = new LazyLock(`${zName}#write`);
         file.timeout = -1;
         file.useWriteAhead = true;
         file.writeHint = null;
@@ -474,18 +474,48 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
             file.useWriteAhead = false;
           }
 
-          if (file.writeHint || file.readLock.mode !== 'shared') {
-            // Asynchronous lock acquisition is needed. Set retryResult to
-            // non-null so when SQLite calls jUnlock() it knows not to reset
-            // any locks we have in progress.
-            file.retryResult = {};
-            this._module.retryOps.push(this.#retryLock(pFile, lockType));
-            return VFS.SQLITE_BUSY;
+          // There are three distinct cases. In each case if the required
+          // lock is already held then we can proceed synchronously.
+          // Otherwise we need to acquire state asynchronously and retry.
+          if (!file.writeHint) {
+            // Case 1: Read transaction with write-ahead logging.
+            if (!file.readLock.acquireIfHeld('shared')) {
+              file.retryResult = {};
+              this._module.retryOps.push(this.#retryLockRead(file));
+              return VFS.SQLITE_BUSY;
+            } else {
+              file.writeAhead.isolateForRead();
+            }
+          } else {
+            if (file.useWriteAhead) {
+              // Case 2: Write transaction with write-ahead logging.
+              if (!file.writeLock.acquireIfHeld('exclusive')) {
+                file.retryResult = {};
+                this._module.retryOps.push(this.#retryLockWrite(file));
+                return VFS.SQLITE_BUSY;
+              } else {
+                file.writeAhead.isolateForWrite();
+              }
+            } else {
+              // Case 3: Transaction without write-ahead logging.
+              file.retryResult = {};
+              this._module.retryOps.push(this.#retryLockExclusive(file));
+              return VFS.SQLITE_BUSY;
+            }
           }
 
-          // This is a read transaction and we can get the shared
-          // lock synchronously.
-          file.readLock.acquireIfHeld('shared');
+          // if (file.writeHint || file.readLock.mode !== 'shared') {
+          //   // Asynchronous lock acquisition is needed. Set retryResult to
+          //   // non-null so when SQLite calls jUnlock() it knows not to reset
+          //   // any locks we have in progress.
+          //   file.retryResult = {};
+          //   this._module.retryOps.push(this.#retryLock(pFile, lockType));
+          //   return VFS.SQLITE_BUSY;
+          // }
+
+          // // This is a read transaction and we can get the shared
+          // // lock synchronously.
+          // file.readLock.acquireIfHeld('shared');
         } else if (file.retryResult instanceof Error) {
           throw file.retryResult;
         }
@@ -493,13 +523,13 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
         // We have acquired the needed locks, either synchronously or
         // via retry.
         file.retryResult = null;
-        if (file.writeHint === null) {
-          // Ensure that our read-only view of the database does not change
-          // while in the SHARED lock state. The corresponding method
-          // isolateForWrite() is not called in this method, but instead
-          // in retryLock() because it is asynchronous.
-          file.writeAhead.isolateForRead();
-        }
+        // if (file.writeHint === null) {
+        //   // Ensure that our read-only view of the database does not change
+        //   // while in the SHARED lock state. The corresponding method
+        //   // isolateForWrite() is not called in this method, but instead
+        //   // in retryLock() because it is asynchronous.
+        //   file.writeAhead.isolateForRead();
+        // }
       } else if (lockType >= VFS.SQLITE_LOCK_RESERVED && !file.writeLock.mode) {
         // This is a write transaction but we don't already have the write
         // lock. This happens when the write hint was not used, which this
@@ -538,7 +568,8 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
           file.writeAhead.rejoin();
         }
 
-        file.writeLock.release();
+        // TODO: use option for lazy write lock release
+        file.writeLock.releaseLazy();
         if (file.readLock.mode === 'exclusive') {
           // TODO: Consider lazy release here as well.
           file.readLock.release();
@@ -825,41 +856,98 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
   }
 
   /**
-   * Handle asynchronous jLock() tasks.
-   * @param {number} pFile 
-   * @param {number} lockType 
+   * @param {FileEntry} file 
    */
-  async #retryLock(pFile, lockType) {
-    const file = this.mapIdToFile.get(pFile);
+  async #retryLockRead(file) {
     try {
-      switch (file.writeHint) {
-        case 'reserved':
-        case 'exclusive':
-          if (file.useWriteAhead) {
-            // Write-ahead transactions only need writeLock, not readLock.
-            await file.writeLock.acquire('exclusive', file.timeout);
-            file.writeAhead.isolateForWrite();
-          } else {
-            // This transaction will write directly to the database,
-            // i.e. not using write-ahead. Get exclusive access.
-            await file.readLock.acquire('exclusive', file.timeout);
-            await file.writeLock.acquire('exclusive');
-
-            // Transfer everything in write-ahead to the OPFS file.
-            await file.writeAhead.checkpoint('restart');
-          }
-          break;
-        default:
-          // This transaction will only read.
-          await file.readLock.acquire('shared', file.timeout);
-          break;
-      }
+      await file.readLock.acquire('shared', file.timeout);
+      file.writeAhead.isolateForRead();
       file.retryResult = {};
     } catch (e) {
+      if (file.readLock.mode) {
+        file.readLock.release();
+      }
       file.retryResult = e;
-      return;
     }
   }
+
+  /**
+   * @param {FileEntry} file 
+   */
+  async #retryLockWrite(file) {
+    try {
+      // Write-ahead transactions only need writeLock, not readLock.
+      await file.writeLock.acquire('exclusive', file.timeout);
+      file.writeAhead.isolateForWrite();
+      file.retryResult = {};
+    } catch (e) {
+      if (file.writeLock.mode) {
+        file.writeLock.release();
+      }
+      file.retryResult = e;
+    }
+  }
+
+  /**
+   * @param {FileEntry} file 
+   */
+  async #retryLockExclusive(file) {
+    try {
+      // This transaction will write directly to the database,
+      // i.e. not using write-ahead. Get exclusive access.
+      await file.readLock.acquire('exclusive', file.timeout);
+      await file.writeLock.acquire('exclusive', file.timeout);
+
+      // Transfer everything in write-ahead to the OPFS file.
+      await file.writeAhead.checkpoint('restart');
+      file.retryResult = {};
+    } catch (e) {
+      if (file.writeLock.mode) {
+        file.writeLock.release();
+      }
+      if (file.readLock.mode) {
+        file.readLock.release();
+      }
+      file.retryResult = e;
+    }
+  }
+
+  // /**
+  //  * Handle asynchronous jLock() tasks.
+  //  * @param {number} pFile 
+  //  * @param {number} lockType 
+  //  */
+  // async #retryLock(pFile, lockType) {
+  //   const file = this.mapIdToFile.get(pFile);
+  //   try {
+  //     switch (file.writeHint) {
+  //       case 'reserved':
+  //       case 'exclusive':
+  //         if (file.useWriteAhead) {
+  //           // Write-ahead transactions only need writeLock, not readLock.
+  //           await file.writeLock.acquire('exclusive', file.timeout);
+  //           file.writeAhead.isolateForWrite();
+  //         } else {
+  //           // This transaction will write directly to the database,
+  //           // i.e. not using write-ahead. Get exclusive access.
+  //           await file.readLock.acquire('exclusive', file.timeout);
+  //           await file.writeLock.acquire('exclusive');
+
+  //           // Transfer everything in write-ahead to the OPFS file.
+  //           await file.writeAhead.checkpoint('restart');
+  //         }
+  //         break;
+  //       default:
+  //         // This transaction will only read.
+  //         await file.readLock.acquire('shared', file.timeout);
+  //         break;
+  //     }
+  //     file.retryResult = {};
+  //   } catch (e) {
+  //     file.retryResult = e;
+  //     return;
+  //   }
+  // }
 
   /**
    * Handle asynchronous jOpen() tasks.
