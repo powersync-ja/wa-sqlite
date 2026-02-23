@@ -22,7 +22,7 @@ export class LazyLock extends Lock {
   }
 
   close() {
-    super.close
+    super.close();
     this.#channel.onmessage = null;
     this.#channel.close();
   }
