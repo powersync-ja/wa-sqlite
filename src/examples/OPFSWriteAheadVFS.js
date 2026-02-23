@@ -27,6 +27,7 @@ const finalizationRegistry = new FinalizationRegistry((/** @type {() => void} */
  * @property {LazyLock} [writeLock]
  * @property {'none'|'read'|'write'|'readwrite'} [useLazyLock]
  * @property {number} [timeout]
+ * @property {0|1|2|3} [synchronous]
  * 
  * @property {WriteAhead} [writeAhead]
  */
@@ -160,6 +161,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
         file.writeLock = new LazyLock(`${zName}#write`);
         file.useLazyLock = 'readwrite';
         file.timeout = -1;
+        file.synchronous = 1; // NORMAL
         file.useWriteAhead = true;
         file.writeHint = null;
       } else if (flags & VFS.SQLITE_OPEN_MAIN_JOURNAL) {
@@ -409,8 +411,8 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
       const file = this.mapIdToFile.get(fileId);
       if (file.flags & VFS.SQLITE_OPEN_MAIN_DB) {
         if (file.useWriteAhead) {
-          // TODO: Track PRAGMA synchronous setting.
-          file.writeAhead.sync('normal');
+          const durability = file.synchronous > 1 ? 'strict' : 'relaxed';
+          file.writeAhead.sync({ durability });
         } else {
           file.accessHandle.flush();
         }
@@ -652,6 +654,30 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
                 case 'exclusive':
                   file.lockingMode = 'exclusive';
                   break;
+              }
+              break;
+            case 'synchronous':
+              if (value !== null) {
+                switch (value.toLowerCase()) {
+                  case 'off':
+                  case '0':
+                    file.synchronous = 0;
+                    break;
+                  case 'normal':
+                  case '1':
+                    file.synchronous = 1;
+                    break;
+                  case 'full':
+                  case '2':
+                    file.synchronous = 2;
+                    break;
+                  case 'extra':
+                  case '3':
+                    file.synchronous = 3;
+                    break;
+                  default:
+                    throw new Error(`unexpected synchronous value: ${value}`);
+                }
               }
               break;
             case 'vfs_trace':

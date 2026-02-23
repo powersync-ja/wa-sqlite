@@ -265,10 +265,10 @@ export class WriteAhead {
   }
   
   /**
-   * @param {'normal'|'full'} mode 
+   * @param {{durability: 'strict'|'relaxed'}} options 
    */
-  sync(mode) {
-    if (mode === 'full') {
+  sync(options) {
+    if (options.durability === 'strict') {
       this.#waFile.accessHandle.flush();
     }
   }
@@ -474,7 +474,7 @@ export class WriteAhead {
       if (options.isRestart) {
         // Wait for all connections to clear their overlay.
         await this.#waitForTxIdLocks(value => value.minTxId > ckptId);
-        
+
         this.#waFile.reset();
       }
     });
