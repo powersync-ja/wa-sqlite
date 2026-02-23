@@ -1,6 +1,6 @@
 import { Lock } from './Lock.js';
 
-const DEFAULT_AUTOCHECKPOINT_PAGES = 1_000;
+const DEFAULT_AUTOCHECKPOINT_PAGES = 1000;
 const DEFAULT_BACKSTOP_INTERVAL = 30_000;
 
 const SECTOR_SIZE = 4096;
@@ -53,6 +53,7 @@ export class WriteAhead {
   /** @type {Map<number, PageEntry>} */ #waOverlay = new Map();
   /** @type {Map<number, Transaction>} */ #mapIdToTx = new Map();
   /** @type {Map<number, Transaction>} */ #pendingTx = new Map();
+  #mapIdToTxPageCount = 0;
 
   #broadcastChannel;
   /** @type {number} */ #backstopTimer;
@@ -170,9 +171,14 @@ export class WriteAhead {
     if (this.#isolationState === 'write') {
       // Resume backstop after write isolation.
       this.#backstop();
+
+      // We need a place for a connection that only does write transactions
+      // to auto-checkpoint. This the best place because writing is
+      // complete.
+      this.#autoCheckpoint();
     } else {
       // Catch up on new transactions that arrived while isolated.
-      this.#advanceTxId();
+      this.#advanceTxId({ autoCheckpoint: true });
     }
     this.#isolationState = null;
   }
@@ -311,6 +317,7 @@ export class WriteAhead {
   #activateTx(tx) {
     // Transfer to the active collection of transactions.
     this.#mapIdToTx.set(tx.id, tx);
+    this.#mapIdToTxPageCount += tx.pages.size;
   
     // Add transaction pages to the write-ahead overlay.
     for (const [offset, pageEntry] of tx.pages) {
@@ -324,7 +331,7 @@ export class WriteAhead {
    * last broadcast transaction. Optionally, also advance through any
    * additional transactions in the WAL file to be fully current.
    * 
-   * @param {{readToCurrent?: boolean}} options
+   * @param {{readToCurrent?: boolean, autoCheckpoint?: boolean}} options
    */
   #advanceTxId(options = {}) {
     let didAdvance = false;
@@ -356,6 +363,21 @@ export class WriteAhead {
     if (didAdvance) {
       // Publish our new view txId.
       this.#updateTxIdLock();
+
+      if (options.autoCheckpoint) {
+        this.#autoCheckpoint();
+      }
+    }
+  }
+
+  #autoCheckpoint() {
+    // Perform an automatic checkpoint if enabled and needed. Automatic
+    // checkpoints are passive, so this will not change the WAL file
+    // usage or size.
+    if (this.options.autoCheckpointPages > 0 &&
+        this.#mapIdToTxPageCount >= this.options.autoCheckpointPages) {
+      this.log?.(`%cauto-checkpoint`, 'background-color: lightgreen;');
+      this.checkpoint('passive');
     }
   }
 
@@ -494,6 +516,7 @@ export class WriteAhead {
 
       // Remove transaction.
       this.#mapIdToTx.delete(tx.id);
+      this.#mapIdToTxPageCount -= tx.pages.size;
     }
     this.#updateTxIdLock();
   }
@@ -510,7 +533,7 @@ export class WriteAhead {
         this.#pendingTx.set(tx.id, tx);
         if (this.#isolationState === null) {
           // Not in an isolated state, so advance our view of the database.
-          this.#advanceTxId();
+          this.#advanceTxId({ autoCheckpoint: true });
         }
       }
     } else if (event.data.type === 'ckpt') {

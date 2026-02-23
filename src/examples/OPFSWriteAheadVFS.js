@@ -663,10 +663,8 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
               return VFS.SQLITE_OK;
             case 'wal_autocheckpoint':
               if (value !== null) {
-                const pageCount = parseInt(value);
-                if (pageCount > 0) {
-                  file.writeAhead.options.autoCheckpointPages = pageCount;
-                }
+                const nPages = parseInt(value);
+                file.writeAhead.options.autoCheckpointPages = Math.max(nPages, 0);
               }
               break;
             case 'wal_checkpoint':
