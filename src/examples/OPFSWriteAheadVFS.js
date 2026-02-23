@@ -26,6 +26,7 @@ const finalizationRegistry = new FinalizationRegistry((/** @type {() => void} */
  * @property {number} [lockState] SQLITE_LOCK_*
  * @property {LazyLock} [readLock]
  * @property {LazyLock} [writeLock]
+ * @property {'none'|'read'|'write'|'readwrite'} [useLazyLock]
  * @property {number} [timeout]
  * 
  * @property {WriteAhead} [writeAhead]
@@ -158,6 +159,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
         file.lockingMode = null;
         file.readLock = new LazyLock(`${zName}#read`);
         file.writeLock = new LazyLock(`${zName}#write`);
+        file.useLazyLock = 'readwrite';
         file.timeout = -1;
         file.useWriteAhead = true;
         file.writeHint = null;
@@ -568,16 +570,28 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
           file.writeAhead.rejoin();
         }
 
-        // TODO: use option for lazy write lock release
-        file.writeLock.releaseLazy();
-        if (file.readLock.mode === 'exclusive') {
-          // TODO: Consider lazy release here as well.
-          file.readLock.release();
-        } else {
-          file.readLock.releaseLazy();
+        // Release any locks.
+        switch (file.useLazyLock) {
+          case 'none':
+            file.writeLock.release();
+            file.readLock.release();
+            break;
+          case 'read':
+            file.writeLock.release();
+            file.readLock.releaseLazy();
+            break;
+          case 'write':
+            file.writeLock.releaseLazy();
+            file.readLock.release();
+            break;
+          case 'readwrite':
+            file.writeLock.releaseLazy();
+            file.readLock.releaseLazy();
+            break;
         }
-        file.writeHint = null;
 
+        // Reset state for the next transaction.
+        file.writeHint = null;
         if (file.lockingMode === 'normal') {
           file.useWriteAhead = true;
         }
@@ -700,6 +714,27 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
               // different information, but that is not feasible from a VFS.
               {
                 const s = file.writeAhead.getWriteAheadSize().toString();
+                const ptr = this._module._sqlite3_malloc64(s.length + 1);
+                this._module.stringToUTF8(s, ptr, s.length + 1);
+                pArg.setUint32(0, ptr, true);
+              }
+              return VFS.SQLITE_OK;
+            case 'lazy_lock':
+              if (value !== null) {
+                const useLazyLock = value.toLowerCase();
+                switch (useLazyLock) {
+                  case 'read':
+                  case 'write':
+                  case 'readwrite':
+                  case 'none':
+                    file.useLazyLock = useLazyLock;
+                    break;
+                  default:
+                    throw new Error(`unexpected value for lazy_lock: ${value}`);
+                }
+              }
+              {
+                const s = file.useLazyLock;
                 const ptr = this._module._sqlite3_malloc64(s.length + 1);
                 this._module.stringToUTF8(s, ptr, s.length + 1);
                 pArg.setUint32(0, ptr, true);
