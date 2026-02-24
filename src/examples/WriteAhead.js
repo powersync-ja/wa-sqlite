@@ -460,8 +460,11 @@ export class WriteAhead {
       }
 
       if (writtenOffsets.size > 0) {
-        // Ensure data is safely in the file.
-        this.#dbHandle.flush();
+        if (ckptId == this.#waFile.txId) {
+          // Ensure data is safely in the file.
+          this.log?.(`%c#checkpoint flush database file`, 'background-color: lightgreen;');
+          this.#dbHandle.flush();
+        }
 
         // Notify other connections and ourselves of the checkpoint.
         this.#broadcastChannel.postMessage({
