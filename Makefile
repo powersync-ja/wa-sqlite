@@ -1,7 +1,7 @@
 # dependencies
 
 BASE_SQLITE_VERSION=3.51.2
-SQLITE_VERSION = version-${BASE_SQLITE_VERSION}
+SQLITE_VERSION = trunk
 MC_SQLITE_VERSION = 2.2.7
 SQLITE_TARBALL_URL = https://www.sqlite.org/src/tarball/$(SQLITE_VERSION)/sqlite.tar.gz
 MC_SQLITE_URL = https://github.com/utelle/SQLite3MultipleCiphers/releases/download/v${MC_SQLITE_VERSION}/sqlite3mc-${MC_SQLITE_VERSION}-sqlite-${BASE_SQLITE_VERSION}-amalgamation.zip
@@ -77,6 +77,7 @@ EMCC ?= emcc
 CFLAGS_COMMON = \
 	-I'deps/$(SQLITE_VERSION)' \
 	-Wno-non-literal-null-conversion \
+	-DSQLITE_EXPERIMENTAL_PRAGMA_20251114 \
 	$(CFLAGS_EXTRA)
 CFLAGS_DEBUG = -g -fPIC $(CFLAGS_COMMON)
 CFLAGS_DIST =  -Oz -flto $(CFLAGS_COMMON)

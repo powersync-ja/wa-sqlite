@@ -1,0 +1,1051 @@
+import { FacadeVFS } from "../FacadeVFS.js";
+import * as VFS from '../VFS.js';
+import { LazyLock } from "./LazyLock.js";
+import { WriteAhead } from "./WriteAhead.js";
+
+const LIBRARY_FILES_ROOT = '.wa-sqlite';
+const DEFAULT_TEMP_FILES = 6;
+
+const finalizationRegistry = new FinalizationRegistry((/** @type {() => void} */ f) => f());
+
+/**
+ * @typedef FileEntry
+ * @property {string} zName
+ * @property {number} flags
+ * @property {FileSystemSyncAccessHandle} [accessHandle]
+
+ * Main database file properties:
+ * @property {*} [retryResult]
+ * @property {FileSystemSyncAccessHandle} [waHandle]
+ * @property {FileSystemSyncAccessHandle} [journalHandle]
+ * 
+ * @property {boolean} [useWriteAhead]
+ * @property {'reserved'|'exclusive'} [writeHint]
+ * @property {'normal'|'exclusive'|null} [lockingMode]
+ * @property {number} [lockState] SQLITE_LOCK_*
+ * @property {LazyLock} [readLock]
+ * @property {LazyLock} [writeLock]
+ * @property {'none'|'read'|'write'|'readwrite'} [useLazyLock]
+ * @property {number} [timeout]
+ * @property {0|1|2|3} [synchronous]
+ * 
+ * @property {WriteAhead} [writeAhead]
+ */
+
+/**
+ * @typedef OPFSWriteAheadOptions
+ * @property {number} [nTmpFiles]
+ * @property {number} [autoCheckpointPages]
+ * @property {number} [heartbeatInterval]
+ * @property {number} [heartbeatActionDelay]
+ */
+
+export class OPFSWriteAheadVFS extends FacadeVFS {
+  lastError = null;
+  log = null;
+  
+  /** @type {Map<number, FileEntry>} */ mapIdToFile = new Map();
+  /** @type {Map<string, FileEntry>} */ mapPathToFile = new Map();
+
+  /** @type {Map<string, FileSystemSyncAccessHandle>} */ boundTempFiles = new Map();
+  /** @type {Set<FileSystemSyncAccessHandle>} */ unboundTempFiles = new Set();
+  /** @type {OPFSWriteAheadOptions} */ options = {
+    nTmpFiles: DEFAULT_TEMP_FILES
+  };
+
+  _ready;
+
+  static async create(name, module, options) {
+    const vfs = new OPFSWriteAheadVFS(name, module);
+    Object.assign(vfs.options, options);
+    await vfs.isReady();
+    return vfs;
+  }
+
+  constructor(name, module) {
+    super(name, module);
+    this._ready = (async () => {
+      // Ensure the library files root directory exists.
+      let dirHandle = await navigator.storage.getDirectory();
+      dirHandle = await dirHandle.getDirectoryHandle(LIBRARY_FILES_ROOT, { create: true });
+
+      // Clean up any stale session directories.
+      // @ts-ignore
+      for await (const name of dirHandle.keys()) {
+        if (name.startsWith('.session-')) {
+          // Acquire a lock on the session directory to ensure it is not in use.
+          await navigator.locks.request(name, { ifAvailable: true }, async lock => {
+            if (lock) {
+              // This directory is not in use.
+              try {
+                await dirHandle.removeEntry(name, { recursive: true });
+              } catch (e) {
+                // Ignore errors, will try again next time.
+              }
+            }
+          });
+        }
+      }
+
+      // Create our session directory.
+      const dirName = `.session-${Math.random().toString(16).slice(2)}`;
+      await new Promise(resolve => {
+        navigator.locks.request(dirName, () => {
+          // @ts-ignore
+          resolve();
+          return new Promise(release => {
+            // @ts-ignore
+            finalizationRegistry.register(this, release);
+          });
+        });
+      });
+      dirHandle = await dirHandle.getDirectoryHandle(dirName, { create: true });
+
+      // Create temporary files.
+      for (let i = 0; i < this.options.nTmpFiles; i++) {
+        const fileHandle= await dirHandle.getFileHandle(i.toString(), { create: true });
+        const accessHandle = await fileHandle.createSyncAccessHandle();
+        finalizationRegistry.register(this, () => accessHandle.close());
+        this.unboundTempFiles.add(accessHandle);
+      }
+    })();
+  }
+
+  isReady() {
+    return Promise.all([super.isReady(), this._ready]).then(() => true);
+  }
+
+ /**
+   * @param {string?} zName 
+   * @param {number} fileId 
+   * @param {number} flags 
+   * @param {DataView} pOutFlags 
+   * @returns {number}
+   */
+  jOpen(zName, fileId, flags, pOutFlags) {
+    try {
+      if (zName === null) {
+        // Generate a temporary filename. This will only be used as a
+        // key to map to a pre-opened temporary file access handle.
+        zName = Math.random().toString(16).slice(2);
+      }
+
+      const file = this.mapPathToFile.get(zName) ?? {
+        zName,
+        flags,
+        retryResult: null,
+      };
+      this.mapPathToFile.set(zName, file);
+
+      if (flags & VFS.SQLITE_OPEN_MAIN_DB) {
+        // Open database and journal files with a retry operation.
+        if (file.retryResult === null) {
+          // This is the initial open attempt. Start the asynchronous task
+          // and return SQLITE_BUSY to force a retry.
+          this._module.retryOps.push(this.#retryOpen(zName, flags, fileId, pOutFlags));
+          return VFS.SQLITE_BUSY;
+        } else if (file.retryResult instanceof Error) {
+          throw file.retryResult;
+        }
+
+        // Initialize database file state.
+        file.accessHandle = file.retryResult.accessHandle;
+        file.journalHandle = file.retryResult.journalHandle;
+        file.waHandle = file.retryResult.waHandle;
+        file.writeAhead = file.retryResult.writeAhead;
+        file.retryResult = null;
+
+        file.lockState = VFS.SQLITE_LOCK_NONE;
+        file.lockingMode = null;
+        file.readLock = new LazyLock(`${zName}#read`);
+        file.writeLock = new LazyLock(`${zName}#write`);
+        file.useLazyLock = 'readwrite';
+        file.timeout = -1;
+        file.synchronous = 1; // NORMAL
+        file.useWriteAhead = true;
+        file.writeHint = null;
+      } else if (flags & VFS.SQLITE_OPEN_MAIN_JOURNAL) {
+        // A journal file is managed with its main database so look that up.
+        const dbFile = this.#getDbFileFromJournalName(zName);
+        if (!dbFile) {
+          throw new Error(`database file not found for journal ${zName}`);
+        }
+
+        // Determine whether to use the public journal (which is hot or
+        // could become hot) or a private journal from the session directory.
+        // This is necessary because read connections can test a journal
+        // for hotness while a write-ahead transaction is in progress.
+        if (!dbFile.useWriteAhead || dbFile.journalHandle.getSize() > 0) { 
+          // Either write-ahead is not being used, or a hot journal is being
+          // opened for recovery. Use the public journal.
+          file.accessHandle = dbFile.journalHandle;
+        } else if (dbFile.useWriteAhead && dbFile.lockState > VFS.SQLITE_LOCK_SHARED) {
+          // The journal is being opened for a write-ahead transaction.
+          // This journal can never be hot so don't expose it to other
+          // connections.
+          file.accessHandle = this.#openTemporaryFile(zName);
+        } else {
+          throw new Error('unexpected journal file conditions');
+        }
+      } else if (flags & (VFS.SQLITE_OPEN_WAL | VFS.SQLITE_OPEN_SUPER_JOURNAL)) {
+        throw new Error('WAL and super-journal files are not supported');
+      } else {
+        // This is a temporary file. Use an unbound pre-opened accessHandle.
+        file.accessHandle = this.#openTemporaryFile(zName);
+      }
+
+      this.mapIdToFile.set(fileId, file);
+      pOutFlags.setInt32(0, flags, true);
+      return VFS.SQLITE_OK;
+    } catch (e) {
+      console.error(e.stack);
+      this.lastError = e;
+      return VFS.SQLITE_CANTOPEN;
+    }
+  }
+
+  /**
+   * @param {string} zName 
+   * @param {number} syncDir 
+   * @returns {number}
+   */
+  jDelete(zName, syncDir) {
+    try {
+      if (this.boundTempFiles.has(zName)) {
+        const file = this.mapPathToFile.get(zName);
+        this.#deleteTemporaryFile(file);
+      } else if (zName.endsWith('-journal')) {
+        const dbFile = this.#getDbFileFromJournalName(zName);
+        dbFile?.journalHandle.truncate(0);
+        dbFile?.journalHandle.flush();
+        this.mapPathToFile.delete(zName);
+      } else {
+        throw new Error(`unexpected file deletion: ${zName}`);
+      }
+      return VFS.SQLITE_OK;
+    } catch (e) {
+      console.error(e.stack);
+      this.lastError = e;
+      return VFS.SQLITE_IOERR_DELETE;
+    }
+  }
+
+  /**
+   * @param {string} zName 
+   * @param {number} flags 
+   * @param {DataView} pResOut 
+   * @returns {number}
+   */
+  jAccess(zName, flags, pResOut) {
+    try {
+      // Special case main journal files.
+      if (zName.endsWith('-journal')) {
+        const dbFile = this.#getDbFileFromJournalName(zName);
+        if (dbFile) {
+          if (dbFile.lockState <= VFS.SQLITE_LOCK_SHARED) {
+            // SQLite is testing for a hot journal. Journals created in the
+            // session directory for write-ahead transactions are never hot,
+            // i.e. they are used only for rollback. So here we look for
+            // the status of the public journal.
+            if (dbFile.journalHandle.getSize() === 0) {
+              // Treat an empty journal file as non-existent.
+              pResOut.setInt32(0, 0, true);
+            } else {
+              pResOut.setInt32(0, 1, true);
+            }
+          }
+          return VFS.SQLITE_OK;
+        }
+      }
+
+      const file = this.mapPathToFile.get(zName);
+      pResOut.setInt32(0, file ? 1 : 0, true);
+      return VFS.SQLITE_OK;
+    } catch (e) {
+      console.error(e.stack);
+      this.lastError = e;
+      return VFS.SQLITE_IOERR_ACCESS;
+    }
+  }
+
+  /**
+   * @param {number} fileId 
+   * @returns {number}
+   */
+  jClose(fileId) {
+    try {
+      const file = this.mapIdToFile.get(fileId);
+      if (file?.flags & VFS.SQLITE_OPEN_MAIN_DB) {
+        file.writeAhead.close();
+        file.accessHandle.close();
+        file.waHandle.close();
+        this.mapPathToFile.delete(file?.zName);
+
+        file.journalHandle.close();
+        const journalPath = this.#getJournalNameFromDbName(file.zName);
+        this.mapPathToFile.delete(journalPath);
+
+        file.readLock.close();
+        file.writeLock.close();
+      } else if (file?.flags & VFS.SQLITE_OPEN_MAIN_JOURNAL) {
+        // The actual OPFS journal file is managed with the main database
+        // file, so don't close the access handle here.
+      } else if (file?.flags & VFS.SQLITE_OPEN_DELETEONCLOSE) {
+        this.#deleteTemporaryFile(file);
+      }
+
+      // Disassociate fileId from file entry.
+      this.mapIdToFile.delete(fileId);
+      return VFS.SQLITE_OK;
+    } catch (e) {
+      console.error(e.stack);
+      this.lastError = e;
+      return VFS.SQLITE_IOERR_CLOSE;
+    }
+  }
+
+  /**
+   * @param {number} fileId 
+   * @param {Uint8Array} pData 
+   * @param {number} iOffset
+   * @returns {number}
+   */
+  jRead(fileId, pData, iOffset) {
+    try {
+      const file = this.mapIdToFile.get(fileId);
+
+      let bytesRead = null;
+      if (file.flags & VFS.SQLITE_OPEN_MAIN_DB) {
+        // Try reading from the write-ahead overlays first. A read on the
+        // database file is always a complete page, except when reading
+        // from the 100-byte header.
+        const pageOffset = iOffset < 100 ? iOffset : 0;
+        const page = file.writeAhead.read(iOffset - pageOffset);
+        if (page) {
+          const readData = page.subarray(pageOffset, pageOffset + pData.byteLength);
+          pData.set(readData);
+          bytesRead = readData.byteLength;
+        }
+      }
+
+      if (bytesRead === null) {
+        // Read directly from the OPFS file.
+
+        // On Chrome (at least), passing pData to accessHandle.read() is
+        // an error because pData is a Proxy of a Uint8Array. Calling
+        // subarray() produces a real Uint8Array and that works.
+        bytesRead = file.accessHandle.read(pData.subarray(), { at: iOffset });
+      }
+
+      if (bytesRead < pData.byteLength) {
+        pData.fill(0, bytesRead);
+        return VFS.SQLITE_IOERR_SHORT_READ;
+      }
+      return VFS.SQLITE_OK;
+    } catch (e) {
+      console.error(e.stack);
+      this.lastError = e;
+      return VFS.SQLITE_IOERR_READ;
+    }
+  }
+
+  /**
+   * @param {number} fileId 
+   * @param {Uint8Array} pData 
+   * @param {number} iOffset
+   * @returns {number}
+   */
+  jWrite(fileId, pData, iOffset) {
+    try {
+      const file = this.mapIdToFile.get(fileId);
+      if (file.flags & VFS.SQLITE_OPEN_MAIN_DB) {
+        if (file.useWriteAhead) {
+          // Write to the write-ahead overlay.
+          file.writeAhead.write(iOffset, pData);
+          return VFS.SQLITE_OK;
+        }
+      }
+
+      // On Chrome (at least), passing pData to accessHandle.write() is
+      // an error because pData is a Proxy of a Uint8Array. Calling
+      // subarray() produces a real Uint8Array and that works.
+      file.accessHandle.write(pData.subarray(), { at: iOffset });
+      return VFS.SQLITE_OK;
+    } catch (e) {
+      console.error(e.stack);
+      this.lastError = e;
+      return VFS.SQLITE_IOERR_WRITE;
+    }
+  }
+
+  /**
+   * @param {number} fileId 
+   * @param {number} iSize 
+   * @returns {number}
+   */
+  jTruncate(fileId, iSize) {
+    try {
+      const file = this.mapIdToFile.get(fileId);
+      if (file.flags & VFS.SQLITE_OPEN_MAIN_DB) {
+        if (file.useWriteAhead) {
+          file.writeAhead.truncate(iSize);
+          return VFS.SQLITE_OK;
+        }
+      }
+      file.accessHandle.truncate(iSize);
+      return VFS.SQLITE_OK;
+    } catch (e) {
+      console.error(e.stack);
+      this.lastError = e;
+      return VFS.SQLITE_IOERR_TRUNCATE;
+    }
+  }
+
+  /**
+   * @param {number} fileId 
+   * @param {number} flags 
+   * @returns {number}
+   */
+  jSync(fileId, flags) {
+    try {
+      const file = this.mapIdToFile.get(fileId);
+      if (file.flags & VFS.SQLITE_OPEN_MAIN_DB) {
+        if (file.useWriteAhead) {
+          const durability = file.synchronous > 1 ? 'strict' : 'relaxed';
+          file.writeAhead.sync({ durability });
+        } else {
+          file.accessHandle.flush();
+        }
+      } else if (!this.boundTempFiles.has(file.zName)) {
+        // Persistent journal file requires sync.
+        file.accessHandle.flush();
+      } else {
+        // This is a temporary file so sync is not needed.
+        // Temporary journals are only used for rollback by the
+        // connection that created them, not for recovery.
+      }
+      return VFS.SQLITE_OK;
+    } catch (e) {
+      console.error(e.stack);
+      this.lastError = e;
+      return VFS.SQLITE_IOERR_FSYNC;
+    }
+  }
+
+  /**
+   * @param {number} fileId 
+   * @param {DataView} pSize64 
+   * @returns {number}
+   */
+  jFileSize(fileId, pSize64) {
+    try {
+      const file = this.mapIdToFile.get(fileId);
+
+      let size;
+      if (file.flags & VFS.SQLITE_OPEN_MAIN_DB) {
+        size = file.writeAhead.getFileSize() || file.accessHandle.getSize();
+      } else {
+        size = file.accessHandle.getSize();
+      }
+      pSize64.setBigInt64(0, BigInt(size), true);
+      return VFS.SQLITE_OK;
+    } catch (e) {
+      console.error(e.stack);
+      this.lastError = e;
+      return VFS.SQLITE_IOERR_FSTAT;
+    }
+  }
+
+  /**
+   * @param {number} pFile 
+   * @param {number} lockType 
+   * @returns {number|Promise<number>}
+   */
+  jLock(pFile, lockType) {
+    try {
+      const file = this.mapIdToFile.get(pFile);
+      if (file.lockState === VFS.SQLITE_LOCK_NONE && lockType === VFS.SQLITE_LOCK_SHARED) {
+        // We do all our locking work in this transition.
+        if (file.retryResult === null) {
+          if (file.lockingMode === 'exclusive') {
+            // SQLite exclusive locking mode really means that no unlocking
+            // is done, not that the locking state is immediately EXCLUSIVE.
+            // This is a problem if the first transaction after setting
+            // exclusive locking mode does not come with a write hint, so
+            // we force the write hint here.
+            file.writeHint = 'exclusive';
+            file.useWriteAhead = false;
+          }
+
+          // There are three distinct cases. In each case if the required
+          // lock is already held then we can proceed synchronously.
+          // Otherwise we need to acquire state asynchronously and retry.
+          if (!file.writeHint) {
+            // Case 1: Read transaction with write-ahead logging.
+            if (!file.readLock.acquireIfHeld('shared')) {
+              file.retryResult = {};
+              this._module.retryOps.push(this.#retryLockRead(file));
+              return VFS.SQLITE_BUSY;
+            } else {
+              file.writeAhead.isolateForRead();
+            }
+          } else {
+            if (file.useWriteAhead) {
+              // Case 2: Write transaction with write-ahead logging.
+              if (!file.writeLock.acquireIfHeld('exclusive')) {
+                file.retryResult = {};
+                this._module.retryOps.push(this.#retryLockWrite(file));
+                return VFS.SQLITE_BUSY;
+              } else {
+                file.writeAhead.isolateForWrite();
+              }
+            } else {
+              // Case 3: Transaction without write-ahead logging.
+              file.retryResult = {};
+              this._module.retryOps.push(this.#retryLockExclusive(file));
+              return VFS.SQLITE_BUSY;
+            }
+          }
+        } else if (file.retryResult instanceof Error) {
+          throw file.retryResult;
+        }
+
+        // We have acquired the needed locks, either synchronously or
+        // via retry.
+        file.retryResult = null;
+      } else if (lockType >= VFS.SQLITE_LOCK_RESERVED && !file.writeLock.mode) {
+        // This is a write transaction but we don't already have the write
+        // lock. This happens when the write hint was not used, which this
+        // VFS treats as an error.
+        throw new Error('Multi-statement write transaction cannot use BEGIN DEFERRED');
+      }
+      file.lockState = lockType;
+      return VFS.SQLITE_OK;
+    } catch (e) {
+      if (e.name === 'AbortError') {
+        // Timeout expired while waiting for the lock.
+        return VFS.SQLITE_BUSY;
+      }
+
+      console.error(e.stack);
+      this.lastError = e;
+      return VFS.SQLITE_IOERR_LOCK;
+    }
+  }
+
+  /**
+   * @param {number} pFile 
+   * @param {number} lockType 
+   * @returns {number}
+   */
+  jUnlock(pFile, lockType) {
+    try {
+      const file = this.mapIdToFile.get(pFile);
+
+      // If retryResult is non-null, an asynchronous lock operation is in
+      // progress. In that case, don't change any locks.
+      if (!file.retryResult && lockType === VFS.SQLITE_LOCK_NONE) {
+        // In this VFS, this is the only unlock transition that matters.
+        if (file.useWriteAhead) {
+          // Exit write-ahead isolation.
+          file.writeAhead.rejoin();
+        }
+
+        // Release any locks.
+        switch (file.useLazyLock) {
+          case 'none':
+            file.writeLock.release();
+            file.readLock.release();
+            break;
+          case 'read':
+            file.writeLock.release();
+            file.readLock.releaseLazy();
+            break;
+          case 'write':
+            file.writeLock.releaseLazy();
+            file.readLock.release();
+            break;
+          case 'readwrite':
+            file.writeLock.releaseLazy();
+            file.readLock.releaseLazy();
+            break;
+        }
+
+        // Reset state for the next transaction.
+        file.writeHint = null;
+        if (file.lockingMode === 'normal') {
+          file.useWriteAhead = true;
+        }
+      }
+      file.lockState = lockType;
+    } catch (e) {
+      console.error(e.stack);
+      this.lastError = e;
+      return VFS.SQLITE_IOERR_UNLOCK;
+    }
+  }
+
+  /**
+   * @param {number} pFile 
+   * @param {DataView} pResOut 
+   * @returns {number}
+   */
+  jCheckReservedLock(pFile, pResOut) {
+    // This function is only called in the SHARED lock state, and when
+    // a potentially hot journal file exists. Such a journal can only
+    // be created without using write-ahead, and such a connection
+    // cannot co-exist with this connection in SHARED.
+    pResOut.setInt32(0, 0, true);
+    return VFS.SQLITE_OK;
+  }
+
+  /**
+   * @param {number} pFile
+   * @param {number} op
+   * @param {DataView} pArg
+   * @returns {number}
+   */
+  jFileControl(pFile, op, pArg) {
+    try {
+      const file = this.mapIdToFile.get(pFile);
+      switch (op) {
+        case VFS.SQLITE_FCNTL_PRAGMA:
+          const key = this._module.UTF8ToString(pArg.getUint32(4, true));
+          const valueAddress = pArg.getUint32(8, true);
+          const value = valueAddress ? this._module.UTF8ToString(valueAddress) : null;
+          this.log?.(`PRAGMA ${key} ${value}`);
+          switch (key.toLowerCase()) {
+            case 'experimental_pragma_20251114':
+              // After entering the SHARED locking state on the next
+              // transaction, SQLite intends to immediately (barring a hot
+              // journal) transition to RESERVED if value is '1', or
+              // EXCLUSIVE if value is '2'.
+              switch (value) {
+                case '1':
+                  file.writeHint = 'reserved';
+                  break;
+                case '2':
+                  file.writeHint = 'exclusive';
+                  break;
+                default:
+                  throw new Error(`unexpected write hint value: ${value}`);
+              }
+              break;
+            case 'busy_timeout':
+              // Override SQLite's handling of busy timeouts with our
+              // blocking lock timeouts.
+              if (value !== null) {
+                file.timeout = parseInt(value);
+              } else {
+                // Return current timeout.
+                const s = file.timeout.toString();
+                const ptr = this._module._sqlite3_malloc64(s.length + 1);
+                this._module.stringToUTF8(s, ptr, s.length + 1);
+                pArg.setUint32(0, ptr, true);
+              }
+              return VFS.SQLITE_OK;
+            case 'locking_mode':
+              // Track SQLite locking mode. We will use write-ahead only in
+              // normal locking mode.
+              switch (value?.toLowerCase()) {
+                case 'normal':
+                  file.lockingMode = 'normal';
+                  break;
+                case 'exclusive':
+                  file.lockingMode = 'exclusive';
+                  break;
+              }
+              break;
+            case 'synchronous':
+              if (value !== null) {
+                switch (value.toLowerCase()) {
+                  case 'off':
+                  case '0':
+                    file.synchronous = 0;
+                    break;
+                  case 'normal':
+                  case '1':
+                    file.synchronous = 1;
+                    break;
+                  case 'full':
+                  case '2':
+                    file.synchronous = 2;
+                    break;
+                  case 'extra':
+                  case '3':
+                    file.synchronous = 3;
+                    break;
+                  default:
+                    throw new Error(`unexpected synchronous value: ${value}`);
+                }
+              }
+              break;
+            case 'vfs_trace':
+              // This is a trace feature for debugging only.
+              if (value !== null) {
+                this.log = parseInt(value) !== 0 ? console.debug : null;
+                file.writeAhead.log = this.log;
+              }
+              return VFS.SQLITE_OK;
+            case 'wal_autocheckpoint':
+              if (value !== null) {
+                const nPages = parseInt(value);
+                file.writeAhead.options.autoCheckpointPages = Math.max(nPages, 0);
+              }
+              break;
+            case 'wal_checkpoint':
+              const checkpointMode = (value ?? 'passive').toLowerCase();
+              switch (checkpointMode) {
+                case 'passive':
+                case 'full':
+                case 'restart':
+                case 'truncate':
+                  if (file.lockState !== VFS.SQLITE_LOCK_NONE) {
+                    throw new Error('invalid while database is locked');
+                  }
+                  
+                  this._module.pendingOps.push(this.#pendingCheckpoint(file, checkpointMode));
+                  break;
+                case 'noop':
+                  break;
+                default:
+                  throw new Error(`unexpected wal_checkpoint mode: ${value}`);
+              }
+
+              // Return the approximate size of the write-ahead data (which
+              // may be smaller than the actual file size). SQLite returns
+              // different information, but that is not feasible from a VFS.
+              {
+                const s = file.writeAhead.getWriteAheadSize().toString();
+                const ptr = this._module._sqlite3_malloc64(s.length + 1);
+                this._module.stringToUTF8(s, ptr, s.length + 1);
+                pArg.setUint32(0, ptr, true);
+              }
+              return VFS.SQLITE_OK;
+            case 'lazy_lock':
+              if (value !== null) {
+                const useLazyLock = value.toLowerCase();
+                switch (useLazyLock) {
+                  case 'read':
+                  case 'write':
+                  case 'readwrite':
+                  case 'none':
+                    file.useLazyLock = useLazyLock;
+                    break;
+                  default:
+                    throw new Error(`unexpected value for lazy_lock: ${value}`);
+                }
+              }
+              {
+                const s = file.useLazyLock;
+                const ptr = this._module._sqlite3_malloc64(s.length + 1);
+                this._module.stringToUTF8(s, ptr, s.length + 1);
+                pArg.setUint32(0, ptr, true);
+              }
+              return VFS.SQLITE_OK;
+            case 'write_ahead':
+              // For testing purposes only: enable or disable write-ahead mode.
+              if (value !== null) {
+                if (file.lockState !== VFS.SQLITE_LOCK_NONE) {
+                  throw new Error('cannot change write_ahead mode while database is locked');
+                }
+                file.useWriteAhead = parseInt(value) !== 0;
+              } else {
+                const s = (file.useWriteAhead ? '1' : '0');
+                const ptr = this._module._sqlite3_malloc64(s.length + 1);
+                this._module.stringToUTF8(s, ptr, s.length + 1);
+                pArg.setUint32(0, ptr, true);
+              }
+              return VFS.SQLITE_OK;
+          }
+          break;
+
+        // Support SQLite batch atomic write transactions.
+        case VFS.SQLITE_FCNTL_BEGIN_ATOMIC_WRITE:
+        case VFS.SQLITE_FCNTL_COMMIT_ATOMIC_WRITE:
+          if (file.flags & VFS.SQLITE_OPEN_MAIN_DB) {
+            return VFS.SQLITE_OK;
+          }
+          break;
+        case VFS.SQLITE_FCNTL_ROLLBACK_ATOMIC_WRITE:
+          if (file.flags & VFS.SQLITE_OPEN_MAIN_DB) {
+            file.writeAhead.rollback();
+            return VFS.SQLITE_OK;
+          }
+          break;
+
+        case VFS.SQLITE_FCNTL_SYNC:
+          if (file.flags & VFS.SQLITE_OPEN_MAIN_DB) {
+            if (file.useWriteAhead) {
+              file.writeAhead.commit();
+            }
+          }
+          break;
+      }
+    } catch (e) {
+      console.error(e.stack);
+      this.lastError = e;
+      return VFS.SQLITE_IOERR;
+    }
+    return VFS.SQLITE_NOTFOUND;
+  }
+
+  /**
+   * @param {number} pFile
+   * @returns {number}
+   */
+  jDeviceCharacteristics(pFile) {
+    let result = VFS.SQLITE_IOCAP_UNDELETABLE_WHEN_OPEN;
+
+    const file = this.mapIdToFile.get(pFile);
+    if (file.useWriteAhead) {
+      // When write-ahead is in use, we can do batch atomic writes.
+      result |= VFS.SQLITE_IOCAP_BATCH_ATOMIC;
+    }
+    return result;
+  }
+
+  /**
+   * @param {Uint8Array} zBuf 
+   * @returns {number}
+   */
+  jGetLastError(zBuf) {
+    if (this.lastError) {
+      console.error(this.lastError);
+      const outputArray = zBuf.subarray(0, zBuf.byteLength - 1);
+      const { written } = new TextEncoder().encodeInto(this.lastError.message, outputArray);
+      zBuf[written] = 0;
+    }
+    return VFS.SQLITE_OK
+  }
+
+  /**
+   * @param {string} zName 
+   * @returns {FileSystemSyncAccessHandle}
+   */
+  #openTemporaryFile(zName) {
+    if (this.unboundTempFiles.size === 0) {
+      throw new Error('no temporary files available');
+    }
+
+    // Bind an access handle from the temporary pool.
+    const accessHandle = this.unboundTempFiles.values().next().value;
+    this.unboundTempFiles.delete(accessHandle);
+    this.boundTempFiles.set(zName, accessHandle);
+    return accessHandle;
+  }
+
+  /**
+   * @param {FileEntry} file 
+   */
+  #deleteTemporaryFile(file) {
+    file.accessHandle.truncate(0);
+
+    // Temporary files are not actually deleted, just returned to the pool.
+    this.mapPathToFile.delete(file.zName);
+    this.unboundTempFiles.add(file.accessHandle);
+    this.boundTempFiles.delete(file.zName);
+  }
+
+  /**
+   * @param {string} dbName 
+   * @returns {string}
+   */
+  #getJournalNameFromDbName(dbName) {
+    return `${dbName}-journal`;
+  }
+
+  #getWriteAheadNameFromDbName(dbName) {
+    // Our WAL file is not compatible with SQLite WAL, so use a distinct name.
+    return `${dbName}-waf`;
+  }
+
+  /**
+   * @param {string} journalName 
+   * @returns {FileEntry}
+   */
+  #getDbFileFromJournalName(journalName) {
+    const dbFilename = journalName.slice(0, -'-journal'.length);
+    return this.mapPathToFile.get(dbFilename);
+  }
+
+  /**
+   * Asynchronous PRAGMA operation to checkpoint the write-ahead log.
+   * @param {FileEntry} file 
+   * @param {'passive'|'full'|'restart'|'truncate'} mode 
+   */
+  async #pendingCheckpoint(file, mode) {
+    try {
+      if (mode !== 'passive') {
+        await file.writeLock.acquire('exclusive');
+      }
+      
+      await file.writeAhead.checkpoint(mode);
+    } catch (e) {
+      if (e.name === 'AbortError') {
+        e.code = VFS.SQLITE_BUSY;
+      }
+      throw e;
+    } finally {
+      file.writeLock.release();
+    }
+  }
+
+  /**
+   * @param {FileEntry} file 
+   */
+  async #retryLockRead(file) {
+    try {
+      await file.readLock.acquire('shared', file.timeout);
+      file.writeAhead.isolateForRead();
+      file.retryResult = {};
+    } catch (e) {
+      if (file.readLock.mode) {
+        file.readLock.release();
+      }
+      file.retryResult = e;
+    }
+  }
+
+  /**
+   * @param {FileEntry} file 
+   */
+  async #retryLockWrite(file) {
+    try {
+      // Write-ahead transactions only need writeLock, not readLock.
+      await file.writeLock.acquire('exclusive', file.timeout);
+      file.writeAhead.isolateForWrite();
+      file.retryResult = {};
+    } catch (e) {
+      if (file.writeLock.mode) {
+        file.writeLock.release();
+      }
+      file.retryResult = e;
+    }
+  }
+
+  /**
+   * @param {FileEntry} file 
+   */
+  async #retryLockExclusive(file) {
+    try {
+      // This transaction will write directly to the database,
+      // i.e. not using write-ahead. Get exclusive access.
+      await file.readLock.acquire('exclusive', file.timeout);
+      await file.writeLock.acquire('exclusive', file.timeout);
+
+      // Transfer everything in write-ahead to the OPFS file.
+      await file.writeAhead.checkpoint('restart');
+      file.retryResult = {};
+    } catch (e) {
+      if (file.writeLock.mode) {
+        file.writeLock.release();
+      }
+      if (file.readLock.mode) {
+        file.readLock.release();
+      }
+      file.retryResult = e;
+    }
+  }
+
+  /**
+   * Handle asynchronous jOpen() tasks.
+   * @param {string} zName 
+   * @param {number} flags 
+   * @param {number} fileId 
+   * @param {DataView} pOutFlags 
+   * @returns {Promise<void>}
+   */
+  async #retryOpen(zName, flags, fileId, pOutFlags) {
+    /** @type {(() => void)[]} */ const onError = [];
+    const file = this.mapPathToFile.get(zName);
+    try {
+      await navigator.locks.request(`${zName}#open`, async lock => {
+        // Parse the path components.
+        const directoryNames = zName.split('/').filter(d => d);
+        const dbName = directoryNames.pop();
+
+        // Get the OPFS directory handle.
+        let dirHandle = await navigator.storage.getDirectory();
+        const create = !!(flags & VFS.SQLITE_OPEN_CREATE);
+        for (const directoryName of directoryNames) {
+          dirHandle = await dirHandle.getDirectoryHandle(directoryName, { create });
+        }
+
+        // Open the main database OPFS file. We need to know whether the file
+        // was created or not so we know whether to remove any existing
+        // IndexedDB database with the same name. This will not be necessary
+        // if the write-ahead data is moved to OPFS entirely.
+        let created = false;
+        /** @type {FileSystemSyncAccessHandle} */ let accessHandle;
+        try {
+          const fileHandle = await dirHandle.getFileHandle(dbName);
+          // @ts-ignore
+          accessHandle = await fileHandle.createSyncAccessHandle({
+            mode: 'readwrite-unsafe'
+          });
+        } catch (e) {
+          if (e.name === 'NotFoundError' && create) {
+            const fileHandle = await dirHandle.getFileHandle(dbName, { create });
+            // @ts-ignore
+            accessHandle = await fileHandle.createSyncAccessHandle({
+              mode: 'readwrite-unsafe'
+            });
+            created = true;
+          } else {
+            throw e;
+          }
+        }
+        onError.push(() => {
+          accessHandle.close();
+          if (created) {
+            dirHandle.removeEntry(dbName);
+          }
+        });
+
+        // Pre-open the journal OPFS file here.
+        const journalName = this.#getJournalNameFromDbName(dbName);
+        const fileHandle = await dirHandle.getFileHandle(journalName, { create: true });
+        // @ts-ignore
+        const journalHandle = await fileHandle.createSyncAccessHandle({
+          mode: 'readwrite-unsafe'
+        });
+        onError.push(() => {
+          journalHandle.close();
+          if (created) {
+            dirHandle.removeEntry(journalName);
+          }
+        });
+
+        // Open the WAL file.
+        const waName = this.#getWriteAheadNameFromDbName(dbName);
+        const waFileHandle = await dirHandle.getFileHandle(waName, { create: true });
+        // @ts-ignore
+        const waHandle = await waFileHandle.createSyncAccessHandle({
+          mode: 'readwrite-unsafe'
+        });
+        onError.push(() => {
+          waHandle.close();
+          if (created) {
+            dirHandle.removeEntry(waName);
+          }
+        });
+        
+        // Create the write-ahead manager.
+        const writeAhead = new WriteAhead(
+          zName,
+          accessHandle,
+          waHandle,
+          Object.assign({ create: created }, this.options));
+        await writeAhead.ready();
+
+        file.retryResult = { accessHandle, waHandle, journalHandle, writeAhead };
+      });
+    } catch (e) {
+      while (onError.length) {
+        onError.pop()();
+      }
+      file.retryResult = e;
+    }
+  }
+}
