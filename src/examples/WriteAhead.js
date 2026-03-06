@@ -193,11 +193,12 @@ export class WriteAhead {
     // write-ahead overlay.
     const pageEntry = this.#txActive?.pages.get(offset) ?? this.#waOverlay.get(offset);
     if (pageEntry) {
-      this.log?.(`%cread page at offset ${offset} from WAL ${pageEntry.waOffset}`, 'background-color: gold;');
       if (pageEntry.pageData) {
         // Page data is cached.
+        this.log?.(`%cread page at ${offset} from WAL ${pageEntry.waOffset} (cached)`, 'background-color: gold;');
         return pageEntry.pageData;
       }
+      this.log?.(`%cread page at ${offset} from WAL ${pageEntry.waOffset}`, 'background-color: gold;');
 
       // Read the page from the WAL file.
       const buffer = new Uint8Array(pageEntry.pageSize);
