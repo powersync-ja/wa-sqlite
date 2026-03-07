@@ -10,6 +10,7 @@ const WAL_FRAME_BASE = SECTOR_SIZE + WAL_FILE_HEADER_SIZE; // first frame starts
 /**
  * @typedef PageEntry
  * @property {number} waOffset location in WAL file
+ * @property {number} waSalt1 location in WAL file
  * @property {number} pageSize
  * @property {Uint8Array} [pageData]
  */
@@ -198,12 +199,10 @@ export class WriteAhead {
         this.log?.(`%cread page at ${offset} from WAL ${pageEntry.waOffset} (cached)`, 'background-color: gold;');
         return pageEntry.pageData;
       }
-      this.log?.(`%cread page at ${offset} from WAL ${pageEntry.waOffset}`, 'background-color: gold;');
 
       // Read the page from the WAL file.
-      const buffer = new Uint8Array(pageEntry.pageSize);
-      this.#waFile.accessHandle.read(buffer, { at: pageEntry.waOffset });
-      return buffer;
+      this.log?.(`%cread page at ${offset} from WAL ${pageEntry.waOffset} (${pageEntry.waSalt1.toString(16)})`, 'background-color: gold;');
+      return this.#waFile.fetchPage(pageEntry);
     }
     return null;
   }
@@ -715,6 +714,16 @@ class WriteAheadFile {
     return false;
   }
 
+  /**
+   * @param {PageEntry} pageEntry 
+   * @returns {Uint8Array}
+   */
+  fetchPage(pageEntry) {
+    const pageData = new Uint8Array(pageEntry.pageSize);
+    this.accessHandle.read(pageData, { at: pageEntry.waOffset });
+    return pageData;
+  }
+
   *readAllTx() {
     while (true) {
       const tx = this.readTx();
@@ -760,7 +769,8 @@ class WriteAheadFile {
         frame.pageOffset,
         {
           pageSize: frame.pageData.byteLength,
-          waOffset: offset + WriteAheadFile.FRAME_HEADER_SIZE
+          waOffset: offset + WriteAheadFile.FRAME_HEADER_SIZE,
+          waSalt1: frame.salt1
        });
 
       offset += frame.byteLength;
@@ -826,7 +836,8 @@ class WriteAheadFile {
 
     const pageEntry = {
       pageSize: pageData.byteLength,
-      waOffset: this.txInProgress.waOffsetEnd + WriteAheadFile.FRAME_HEADER_SIZE
+      waOffset: this.txInProgress.waOffsetEnd + WriteAheadFile.FRAME_HEADER_SIZE,
+      waSalt1: this.salt1
     };
     if (pageOffset === 0) {
       // This is page 1, which contains the database header.
