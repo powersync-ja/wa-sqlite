@@ -855,9 +855,14 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
     return `${dbName}-journal`;
   }
 
-  #getWriteAheadNameFromDbName(dbName) {
+  /**
+   * @param {string} dbName 
+   * @param {number} i 
+   * @returns {string}
+   */
+  #getWriteAheadNameFromDbName(dbName, i) {
     // Our WAL file is not compatible with SQLite WAL, so use a distinct name.
-    return `${dbName}-waf`;
+    return `${dbName}-wa${i}`;
   }
 
   /**
@@ -972,74 +977,64 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
           dirHandle = await dirHandle.getDirectoryHandle(directoryName, { create });
         }
 
-        // Open the main database OPFS file. We need to know whether the file
-        // was created or not so we know whether to remove any existing
-        // IndexedDB database with the same name. This will not be necessary
-        // if the write-ahead data is moved to OPFS entirely.
-        let created = false;
-        /** @type {FileSystemSyncAccessHandle} */ let accessHandle;
-        try {
-          const fileHandle = await dirHandle.getFileHandle(dbName);
-          // @ts-ignore
-          accessHandle = await fileHandle.createSyncAccessHandle({
-            mode: 'readwrite-unsafe'
-          });
-        } catch (e) {
-          if (e.name === 'NotFoundError' && create) {
-            const fileHandle = await dirHandle.getFileHandle(dbName, { create });
-            // @ts-ignore
-            accessHandle = await fileHandle.createSyncAccessHandle({
-              mode: 'readwrite-unsafe'
-            });
-            created = true;
-          } else {
+        const isNewDatabase = create && await (async function() {
+          try {
+            await dirHandle.getFileHandle(dbName);
+            return false;
+          } catch (e) {
+            if (e.name === 'NotFoundError') {
+              return true;
+            }
             throw e;
           }
+        })();
+
+        // Convenience function for opening access handles.
+        async function openFile(
+          /** @type {string} */ filename,
+          /** @type {FileSystemGetFileOptions} */ options) {
+          const fileHandle = await dirHandle.getFileHandle(filename, options);
+          // @ts-ignore
+          const accessHandle = await fileHandle.createSyncAccessHandle({
+            mode: 'readwrite-unsafe'
+          });
+          onError.push(() => {
+            accessHandle.close();
+            if (isNewDatabase) {
+              dirHandle.removeEntry(filename);
+            }
+          });
+          return accessHandle;
         }
-        onError.push(() => {
-          accessHandle.close();
-          if (created) {
-            dirHandle.removeEntry(dbName);
-          }
-        });
 
-        // Pre-open the journal OPFS file here.
-        const journalName = this.#getJournalNameFromDbName(dbName);
-        const fileHandle = await dirHandle.getFileHandle(journalName, { create: true });
-        // @ts-ignore
-        const journalHandle = await fileHandle.createSyncAccessHandle({
-          mode: 'readwrite-unsafe'
-        });
-        onError.push(() => {
-          journalHandle.close();
-          if (created) {
-            dirHandle.removeEntry(journalName);
-          }
-        });
+        // Open the main database OPFS file.
+        const accessHandle = await openFile(dbName, { create });
 
-        // Open the WAL file.
-        const waName = this.#getWriteAheadNameFromDbName(dbName);
-        const waFileHandle = await dirHandle.getFileHandle(waName, { create: true });
-        // @ts-ignore
-        const waHandle = await waFileHandle.createSyncAccessHandle({
-          mode: 'readwrite-unsafe'
-        });
-        onError.push(() => {
-          waHandle.close();
-          if (created) {
-            dirHandle.removeEntry(waName);
+        // Pre-open the persistent journal OPFS file here.
+        const journalHandle = await openFile(
+          this.#getJournalNameFromDbName(dbName),
+          { create: true });
+
+        // Open WAL files.
+        // TODO: WAL2
+        const waHandles = await Promise.all([0].map(async i => {
+          const waName = this.#getWriteAheadNameFromDbName(dbName, i);
+          const waHandle = await openFile(waName, { create: true });
+          if (isNewDatabase) {
+            waHandle.truncate(0);
           }
-        });
-        
+          return waHandle;
+        }));
+
         // Create the write-ahead manager.
         const writeAhead = new WriteAhead(
           zName,
           accessHandle,
-          waHandle,
-          Object.assign({ create: created }, this.options));
+          waHandles[0],
+          Object.assign({ create: isNewDatabase }, this.options));
         await writeAhead.ready();
 
-        file.retryResult = { accessHandle, waHandle, journalHandle, writeAhead };
+        file.retryResult = { accessHandle, waHandle: waHandles[0], journalHandle, writeAhead };
       });
     } catch (e) {
       while (onError.length) {
