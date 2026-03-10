@@ -62,13 +62,13 @@ export class WriteAhead {
   /**
    * @param {string} zName 
    * @param {FileSystemSyncAccessHandle} dbHandle
-   * @param {FileSystemSyncAccessHandle} waHandle
+   * @param {FileSystemSyncAccessHandle[]} waHandles
    * @param {WriteAheadOptions} options 
    */
-  constructor(zName, dbHandle, waHandle, options) {
+  constructor(zName, dbHandle, waHandles, options) {
     this.#zName = zName;
     this.#dbHandle = dbHandle;
-    this.#waFile = new WriteAheadFile(waHandle);
+    this.#waFile = new WriteAheadFile(waHandles, { create: options.create });
     this.options = Object.assign(this.options, options);
 
     // All the asynchronous initialization is done here.
@@ -79,11 +79,6 @@ export class WriteAhead {
       });
 
       // Load all the transactions from the WAL file.
-      if (this.options.create) {
-        this.#waFile.create();
-      }
-
-      this.#waFile.open();
       for (const tx of this.#waFile.readAllTx()) {
         this.#activateTx(tx);
       }
@@ -269,7 +264,7 @@ export class WriteAhead {
    */
   sync(options) {
     if (options.durability === 'strict') {
-      this.#waFile.accessHandle.flush();
+      this.#waFile.activeHandle.flush();
     }
   }
 
@@ -290,7 +285,7 @@ export class WriteAhead {
       await this.#checkpoint(options);
 
       if (mode === 'truncate') {
-        this.#waFile.accessHandle.truncate(this.#waFile.currentOffset);
+        this.#waFile.activeHandle.truncate(this.#waFile.activeOffset);
         this.log?.(`%ccheckpoint restart WAL file`, 'background-color: lightgreen;');
       }
     } finally {
@@ -307,7 +302,7 @@ export class WriteAhead {
    * @returns {number}
    */
   getWriteAheadSize() {
-    return this.#waFile.currentOffset;
+    return this.#waFile.activeOffset;
   }
 
   /**
@@ -417,7 +412,7 @@ export class WriteAhead {
       // Sync the WAL file. This ensures that if there is a crash after
       // part of the WAL has been copied, the uncopied part will still be
       // available afterwards.
-      this.#waFile.accessHandle.flush();
+      this.#waFile.activeHandle.flush();
 
       // Starting at ckptId and going backwards (earlier), write transaction
       // pages to the main database file. Do not overwrite a page written
@@ -436,17 +431,8 @@ export class WriteAhead {
 
         for (const [offset, pageEntry] of tx.pages) {
           if (offset < dbFileSize && !writtenOffsets.has(offset)) {
-            let pageData = pageEntry.pageData;
-            if (!pageData) {
-              // Page data was not cached, so read it from the WAL file.
-              pageData = new Uint8Array(pageEntry.pageSize);
-              const nRead = this.#waFile.accessHandle.read(
-                pageData,
-                { at: pageEntry.waOffset });
-              if (nRead !== pageData.byteLength) {
-                throw new Error('Checkpoint read failed');
-              }
-            }
+            // Fetch the page data from the WAL file if not cached.
+            const pageData = pageEntry.pageData ?? this.#waFile.fetchPage(pageEntry);
 
             // Write the page to the database file.
             const nWritten = this.#dbHandle.write(pageData, { at: offset });
@@ -655,22 +641,27 @@ class WriteAheadFile {
   static FRAME_TYPE_PAGE = 0;
   static FRAME_TYPE_COMMIT = 1;
 
-  /** @type {FileSystemSyncAccessHandle} */ accessHandle;
-  /** @type {number} */ currentOffset;
+  /** @type {FileSystemSyncAccessHandle[]} */ accessHandles;
+
+  /** @type {FileSystemSyncAccessHandle} */ activeHandle;
+  /** @type {{nextTxId: number, salt1: number, salt2: number}} */ activeHeader;
+  /** @type {number} */ activeOffset;
   
   txId = 0;
-  salt1 = 0;
-  salt2 = 0;
 
   /** @type {Transaction} */ txInProgress = null;
 
-  constructor(accessHandle) {
-    this.accessHandle = accessHandle;
-  }
+  /**
+   * @param {FileSystemSyncAccessHandle[]} accessHandles 
+   */
+  constructor(accessHandles, options) {
+    this.accessHandles = accessHandles;
 
-  create() {
-    this.accessHandle.truncate(0);
-    this.#writeFileHeader();
+    if (options.create) {
+      this.activeHandle = accessHandles[0];
+      this.#writeFileHeader(-1);
+    }
+    this.open();
   }
 
   open() {
@@ -681,21 +672,19 @@ class WriteAheadFile {
       .filter(h => h)
       .sort((a, b) => b.nextTxId - a.nextTxId)[0];
     
-    this.currentOffset = WAL_FRAME_BASE;
+    this.activeOffset = WAL_FRAME_BASE;
+    this.activeHeader = fileHeader;
     this.txId = fileHeader.nextTxId - 1;
-    this.salt1 = fileHeader.salt1;
-    this.salt2 = fileHeader.salt2;
   }
 
   reset(options = { truncate: true }) {
     const fileHeader = this.#writeFileHeader();
     if (options.truncate) {
-      this.accessHandle.truncate(WAL_FRAME_BASE);
+      this.activeHandle.truncate(WAL_FRAME_BASE);
     }
 
-    this.currentOffset = WAL_FRAME_BASE;
-    this.salt1 = fileHeader.salt1;
-    this.salt2 = fileHeader.salt2;
+    this.activeOffset = WAL_FRAME_BASE;
+    this.activeHeader = fileHeader;
   }
 
   checkReset() {
@@ -703,14 +692,13 @@ class WriteAheadFile {
     // Look in the slot that is not current, which will be at offset 0
     // or SECTOR_SIZE depending on the current salt1 value (salt1 is
     // incremented on each new header).
-    const headerOffset = (this.salt1 & 0x1) ? 0 : SECTOR_SIZE;
+    const headerOffset = (this.activeHeader.salt1 & 0x1) ? 0 : SECTOR_SIZE;
     const fileHeader = this.#readFileHeader(headerOffset);
     if (fileHeader?.nextTxId > this.txId &&
-        fileHeader.salt1 === ((this.salt1 + 1) | 0)) {
+        fileHeader.salt1 === ((this.activeHeader.salt1 + 1) | 0)) {
       // The WAL file has been reset.
-      this.currentOffset = WAL_FRAME_BASE;
-      this.salt1 = fileHeader.salt1;
-      this.salt2 = fileHeader.salt2;
+      this.activeOffset = WAL_FRAME_BASE;
+      this.activeHeader = fileHeader;
       return true;
     }
     return false;
@@ -722,7 +710,11 @@ class WriteAheadFile {
    */
   fetchPage(pageEntry) {
     const pageData = new Uint8Array(pageEntry.pageSize);
-    this.accessHandle.read(pageData, { at: pageEntry.waOffset });
+    const nBytesRead = this.activeHandle.read(pageData, { at: pageEntry.waOffset });
+
+    if (nBytesRead !== pageEntry.pageSize) {
+      throw new Error(`Short WAL read: expected ${pageEntry.pageSize} bytes, got ${nBytesRead}`);
+    }
     return pageData;
   }
 
@@ -739,7 +731,7 @@ class WriteAheadFile {
    */
   readTx() {
     // Read the next complete transaction or return null.
-    let offset = this.currentOffset;
+    let offset = this.activeOffset;
     /** @type {Transaction?} */ let tx = null;
     while (true) {
       const frame = this.#readFrame(offset);
@@ -748,11 +740,11 @@ class WriteAheadFile {
       if (frame.frameType === WriteAheadFile.FRAME_TYPE_COMMIT) {
         // Update the instance state.
         this.txId += 1;
-        this.currentOffset = offset + frame.byteLength;
+        this.activeOffset = offset + frame.byteLength;
   
         tx.id = this.txId;
         tx.dbFileSize = frame.dbFileSize;
-        tx.waOffsetEnd = this.currentOffset;
+        tx.waOffsetEnd = this.activeOffset;
         return tx;
       }
 
@@ -788,7 +780,7 @@ class WriteAheadFile {
    */
   skipTx(txId, offset) {
     this.txId = txId;
-    this.currentOffset = offset;
+    this.activeOffset = offset;
   }
 
   /**
@@ -802,7 +794,7 @@ class WriteAheadFile {
       pages: new Map(),
       dbFileSize: 0,
       dbPageSize: 0,
-      waOffsetEnd: this.currentOffset
+      waOffsetEnd: this.activeOffset
     };
     return this.txInProgress;
   }
@@ -818,8 +810,8 @@ class WriteAheadFile {
     headerView.setUint8(0, WriteAheadFile.FRAME_TYPE_PAGE);
     headerView.setUint16(2, pageData.byteLength === 65536 ? 1 : pageData.byteLength);
     headerView.setBigUint64(8, BigInt(pageOffset));
-    headerView.setUint32(16, this.salt1);
-    headerView.setUint32(20, this.salt2);
+    headerView.setUint32(16, this.activeHeader.salt1);
+    headerView.setUint32(20, this.activeHeader.salt2);
 
     const checksum = new Checksum();
     checksum.update(new Uint8Array(headerView.buffer, 0, WriteAheadFile.FRAME_HEADER_SIZE - 8));
@@ -828,8 +820,8 @@ class WriteAheadFile {
     headerView.setUint32(28, checksum.s1);
 
     const bytesWritten =
-      this.accessHandle.write(headerView, { at: this.txInProgress.waOffsetEnd }) +
-      this.accessHandle.write(pageData, {
+      this.activeHandle.write(headerView, { at: this.txInProgress.waOffsetEnd }) +
+      this.activeHandle.write(pageData, {
         at: this.txInProgress.waOffsetEnd + WriteAheadFile.FRAME_HEADER_SIZE
       });
     if (bytesWritten !== headerView.byteLength + pageData.byteLength) {
@@ -839,7 +831,7 @@ class WriteAheadFile {
     const pageEntry = {
       pageSize: pageData.byteLength,
       waOffset: this.txInProgress.waOffsetEnd + WriteAheadFile.FRAME_HEADER_SIZE,
-      waSalt1: this.salt1
+      waSalt1: this.activeHeader.salt1
     };
     if (pageOffset === 0) {
       // This is page 1, which contains the database header.
@@ -866,15 +858,15 @@ class WriteAheadFile {
     const headerView = new DataView(new ArrayBuffer(WriteAheadFile.FRAME_HEADER_SIZE));
     headerView.setUint8(0, WriteAheadFile.FRAME_TYPE_COMMIT);
     headerView.setBigUint64(8, BigInt(this.txInProgress.dbFileSize));
-    headerView.setUint32(16, this.salt1);
-    headerView.setUint32(20, this.salt2);
+    headerView.setUint32(16, this.activeHeader.salt1);
+    headerView.setUint32(20, this.activeHeader.salt2);
 
     const checksum = new Checksum();
     checksum.update(new Uint8Array(headerView.buffer, 0, WriteAheadFile.FRAME_HEADER_SIZE - 8));
     headerView.setUint32(24, checksum.s0);
     headerView.setUint32(28, checksum.s1);
 
-    const bytesWritten = this.accessHandle.write(headerView, {
+    const bytesWritten = this.activeHandle.write(headerView, {
       at: this.txInProgress.waOffsetEnd
     });
     if (bytesWritten !== headerView.byteLength) {
@@ -884,7 +876,7 @@ class WriteAheadFile {
 
     const tx = this.txInProgress;
     this.txInProgress = null;
-    this.currentOffset = tx.waOffsetEnd;
+    this.activeOffset = tx.waOffsetEnd;
     this.txId = tx.id;
     return tx;
   }
@@ -895,7 +887,7 @@ class WriteAheadFile {
 
   #readFileHeader(offset) {
     const headerView = new DataView(new ArrayBuffer(WriteAheadFile.FILE_HEADER_SIZE));
-    if (this.accessHandle.read(headerView, { at: offset }) !== headerView.byteLength) {
+    if (this.activeHandle.read(headerView, { at: offset }) !== headerView.byteLength) {
       return null;
     }
 
@@ -916,7 +908,7 @@ class WriteAheadFile {
 
   #readFrame(offset) {
     const headerView = new DataView(new ArrayBuffer(WriteAheadFile.FRAME_HEADER_SIZE));
-    if (this.accessHandle.read(headerView, { at: offset }) !== headerView.byteLength) {
+    if (this.activeHandle.read(headerView, { at: offset }) !== headerView.byteLength) {
       // EOF, not an error.
       return null;
     }
@@ -924,7 +916,7 @@ class WriteAheadFile {
     // Verify the frame header salt values match the file header.
     const frameSalt1 = headerView.getUint32(16);
     const frameSalt2 = headerView.getUint32(20);
-    if (frameSalt1 !== this.salt1 || frameSalt2 !== this.salt2) {
+    if (frameSalt1 !== this.activeHeader.salt1 || frameSalt2 !== this.activeHeader.salt2) {
       // Not necessarily an error, could be from a restart without
       // truncation.
       return null;
@@ -934,7 +926,7 @@ class WriteAheadFile {
     /** @type {Uint8Array} */ let payloadData;
     if (payloadSize) {
       payloadData = new Uint8Array(payloadSize);
-      const payloadBytesRead = this.accessHandle.read(
+      const payloadBytesRead = this.activeHandle.read(
         payloadData,
         { at: offset + WriteAheadFile.FRAME_HEADER_SIZE });
       if (payloadBytesRead !== payloadSize ) return null;
@@ -974,13 +966,13 @@ class WriteAheadFile {
     throw new Error(`Invalid frame type: ${frameType}`);
   }
 
-  #writeFileHeader() {
+  #writeFileHeader(prevSalt1 = this.activeHeader.salt1) {
     // Derive new values from the previous values. Note that salt1 always
     // flips between even and odd so successive headers are written to
     // alternating slots. If the write fails, the file remains in a valid
     // state.
     const nextTxId = this.txId + 1;
-    const salt1 = (this.salt1 + 1) | 0;
+    const salt1 = (prevSalt1 + 1) | 0;
     const salt2 = Math.floor(Math.random() * 0xffffffff);
     const headerView = new DataView(new ArrayBuffer(WriteAheadFile.FILE_HEADER_SIZE));
     headerView.setUint32(0, WriteAheadFile.MAGIC);
@@ -996,12 +988,12 @@ class WriteAheadFile {
     // A header with an even salt1 is written at offset 0, and with an
     // odd salt1 at SECTOR_SIZE.
     const headerOffset = (salt1 & 0x1) ? SECTOR_SIZE : 0;
-    const bytesWritten = this.accessHandle.write(headerView, { at: headerOffset });
+    const bytesWritten = this.activeHandle.write(headerView, { at: headerOffset });
     if (bytesWritten !== headerView.byteLength) {
       throw new Error('write failed');
     }
 
-    this.accessHandle.flush();
+    this.activeHandle.flush();
     return { nextTxId, salt1, salt2 };
   }
 }
