@@ -1,16 +1,12 @@
 import { Lock } from './Lock.js';
 
-const DEFAULT_AUTOCHECKPOINT_PAGES = 1000;
+const DEFAULT_JOURNAL_SIZE_LIMIT = 5;
 const DEFAULT_BACKSTOP_INTERVAL = 30_000;
-
-const SECTOR_SIZE = 4096;
-const WAL_FILE_HEADER_SIZE = 32;
-const WAL_FRAME_BASE = SECTOR_SIZE + WAL_FILE_HEADER_SIZE; // first frame starts at this offset
 
 /**
  * @typedef PageEntry
  * @property {number} waOffset location in WAL file
- * @property {number} waSalt1 location in WAL file
+ * @property {number} waSalt1 WAL2 file identifier
  * @property {number} pageSize
  * @property {Uint8Array} [pageData]
  */
@@ -21,22 +17,23 @@ const WAL_FRAME_BASE = SECTOR_SIZE + WAL_FILE_HEADER_SIZE; // first frame starts
  * @property {Map<number, PageEntry>} pages address to page data mapping
  * @property {number} dbFileSize
  * @property {number} dbPageSize
+ * @property {number} waSalt1 WAL2 file identifier
  * @property {number} waOffsetEnd
  */
 
 /**
  * @typedef WriteAheadOptions
- * @property {boolean} [create=false] true if database is being created
- * @property {number} [autoCheckpointPages]
+ * @property {number} [autoCheckpoint]
  * @property {number} [backstopInterval]
+ * @property {number} [journalSizeLimit]
  */
 
 export class WriteAhead {
   log = null;
   /** @type {WriteAheadOptions} */ options = {
-    create: false,
-    autoCheckpointPages: DEFAULT_AUTOCHECKPOINT_PAGES,
+    autoCheckpoint: 1,
     backstopInterval: DEFAULT_BACKSTOP_INTERVAL,
+    journalSizeLimit: DEFAULT_JOURNAL_SIZE_LIMIT,
   };
 
   #zName;
@@ -56,7 +53,7 @@ export class WriteAhead {
   /** @type {Map<number, Transaction>} */ #pendingTx = new Map();
   #mapIdToTxPageCount = 0;
 
-  #broadcastChannel;
+  /** @type {BroadcastChannel} */ #broadcastChannel;
   /** @type {number} */ #backstopTimer;
 
   /**
@@ -65,10 +62,10 @@ export class WriteAhead {
    * @param {FileSystemSyncAccessHandle[]} waHandles
    * @param {WriteAheadOptions} options 
    */
-  constructor(zName, dbHandle, waHandles, options) {
+  constructor(zName, dbHandle, waHandles, options = {}) {
     this.#zName = zName;
     this.#dbHandle = dbHandle;
-    this.#waFile = new WriteAheadFile(waHandles, { create: options.create });
+    this.#waFile = new WriteAheadFile(waHandles);
     this.options = Object.assign(this.options, options);
 
     // All the asynchronous initialization is done here.
@@ -125,15 +122,6 @@ export class WriteAhead {
       throw new Error('Already in isolated state');
     }
     this.#isolationState = 'read';
-
-    if (this.#waFile.checkReset()) {
-      // The WAL file has been restarted after a full checkpoint. Our
-      // view must be at the final transaction before the checkpoint for
-      // that to have happened. The previous overlay is now stale. In
-      // case we haven't received the checkpoint broadcast, make sure
-      // the overlay is cleared.
-      this.#handleCheckpoint(this.#waFile.txId);
-    }
   }
 
   /**
@@ -149,15 +137,6 @@ export class WriteAhead {
     // Backstop is not needed while writing because we will be current.
     clearTimeout(this.#backstopTimer);
     this.#backstopTimer = null;
-
-    if (this.#waFile.checkReset()) {
-      // The WAL file has been restarted after a full checkpoint. Our
-      // view must be at the final transaction before the checkpoint for
-      // that to have happened. The previous overlay is now stale. In
-      // case we haven't received the checkpoint broadcast, make sure
-      // the overlay is cleared.
-      this.#handleCheckpoint(this.#waFile.txId);
-    }
 
     // A writer needs all previous transactions assimilated.
     this.#advanceTxId({ readToCurrent: true });
@@ -191,12 +170,12 @@ export class WriteAhead {
     if (pageEntry) {
       if (pageEntry.pageData) {
         // Page data is cached.
-        this.log?.(`%cread page at ${offset} from WAL ${pageEntry.waOffset} (cached)`, 'background-color: gold;');
+        this.log?.(`%cread page at ${offset} from WAL ${pageEntry.waSalt1 & 1}:${pageEntry.waOffset} (cached)`, 'background-color: gold;');
         return pageEntry.pageData;
       }
 
       // Read the page from the WAL file.
-      this.log?.(`%cread page at ${offset} from WAL ${pageEntry.waOffset} (${pageEntry.waSalt1.toString(16)})`, 'background-color: gold;');
+      this.log?.(`%cread page at ${offset} from WAL ${pageEntry.waSalt1 & 1}:${pageEntry.waOffset}`, 'background-color: gold;');
       return this.#waFile.fetchPage(pageEntry);
     }
     return null;
@@ -212,11 +191,20 @@ export class WriteAhead {
     }
 
     if (!this.#txActive) {
-      // There is no active transaction so create one.
+      // There is no active transaction so we need to create one. But
+      // first check whether to swap WAL files.
+      const nPageThreshold = this.options.journalSizeLimit >= 0 ?
+        this.options.journalSizeLimit :
+        DEFAULT_JOURNAL_SIZE_LIMIT;
+      if (this.#mapIdToTxPageCount >= nPageThreshold && this.#waFile.isInactiveFileEmpty()) {
+        this.log?.(`%cchange WAL file at ${this.#mapIdToTxPageCount} pages`, 'background-color: lightskyblue;');
+        this.#waFile.swapActiveFile();
+      }
+
       this.#txActive = this.#waFile.beginTx();
     }
     const waOffset = this.#waFile.writePage(offset, data.slice());
-    this.log?.(`%c#write page at ${offset} to WAL ${waOffset}`, 'background-color: lightskyblue;');
+    this.log?.(`%cwrite page at ${offset} to WAL ${this.#waFile.activeHeader.salt1 & 1}:${waOffset}`, 'background-color: lightskyblue;');
   }
 
   /**
@@ -250,7 +238,6 @@ export class WriteAhead {
     const payload = { type: 'tx', tx: this.#txActive };
     this.#broadcastChannel.postMessage(payload);
     this.#txActive = null;
-
   }
 
   rollback() {
@@ -264,7 +251,7 @@ export class WriteAhead {
    */
   sync(options) {
     if (options.durability === 'strict') {
-      this.#waFile.activeHandle.flush();
+      this.#waFile.flushInactiveFile();
     }
   }
 
@@ -278,16 +265,7 @@ export class WriteAhead {
       this.isolateForWrite();
     }
     try {
-      const options = {
-        isRestart: mode !== 'passive',
-        isRequired: mode !== 'passive'
-      };
-      await this.#checkpoint(options);
-
-      if (mode === 'truncate') {
-        this.#waFile.activeHandle.truncate(this.#waFile.activeOffset);
-        this.log?.(`%ccheckpoint restart WAL file`, 'background-color: lightgreen;');
-      }
+      await this.#checkpoint({ isPassive: mode === 'passive' });
     } finally {
       if (mode !== 'passive') {
         this.rejoin();
@@ -296,13 +274,14 @@ export class WriteAhead {
   }
 
   /**
-   * Return the known usage size of the write-ahead file. Note that the
-   * actual file size may be larger than reported if this connection is
-   * not current or if the file has obsolete content past the current point.
+   * Return the approximate number of write-ahead pages. This is the
+   * sum of the number of unique page indices for each transaction,
+   * so it can be fewer than the number of pages if any transaction
+   * contains multiple frames for the same page.
    * @returns {number}
    */
   getWriteAheadSize() {
-    return this.#waFile.activeOffset;
+    return this.#mapIdToTxPageCount;
   }
 
   /**
@@ -336,10 +315,14 @@ export class WriteAhead {
       const nextTxId = this.#waFile.txId + 1;
       let tx;
       if (this.#pendingTx.has(nextTxId)) {
+        // This transaction arrived via message.
         tx = this.#pendingTx.get(nextTxId);
         this.#pendingTx.delete(tx.id);
-        this.#waFile.skipTx(tx.id, tx.waOffsetEnd);
+
+        // Move the WAL file offset past this transaction.
+        this.#waFile.skipTx(tx);
       } else {
+        // Read the transaction from the WAL file.
         tx = this.#waFile.readTx();
       }
 
@@ -366,65 +349,61 @@ export class WriteAhead {
   }
 
   #autoCheckpoint() {
-    // Perform an automatic checkpoint if enabled and needed. Automatic
-    // checkpoints are passive, so this will not change the WAL file
-    // usage or size.
-    if (this.options.autoCheckpointPages > 0 &&
-        this.#mapIdToTxPageCount >= this.options.autoCheckpointPages) {
-      this.log?.(`%cauto-checkpoint`, 'background-color: lightgreen;');
-      this.checkpoint('passive');
+    if (this.options.autoCheckpoint > 0) {
+      this.#checkpoint({ isPassive: true });
     }
   }
 
   /**
    * Move pages from write-ahead to main database file.
    * 
-   * @param {{isRestart?: boolean, isRequired?: boolean}} options
+   * @param {{isPassive: boolean}} options
    */
-  async #checkpoint(options = {}) {
-    // By default, checkpointing is abandoned if another connection is
-    // already checkpointing. With the isRequired option, a checkpoint
-    // is always performed. This is necessary for leaving write-ahead
-    // mode or a user-requested checkpoint.
+  async #checkpoint(options = { isPassive: true }) {
+    // Passive checkpointing is abandoned if another connection is
+    // already checkpointing.
     const lockOptions = {
-      ifAvailable: !options.isRequired,
+      ifAvailable: options.isPassive,
     };
 
     await navigator.locks.request(`${this.#zName}-ckpt`, lockOptions, async lock => {
-      if (!lock) return null;
+      if (!lock) return;
 
-      /** @type {number} */ let ckptId;
-      if (options.isRestart) {
-        // Full checkpoint, use the current WAL file txId.
-        ckptId = this.#waFile.txId;
-
-        // Wait for all connections to reach this txId.
-        await this.#waitForTxIdLocks(value => value.maxTxId >= ckptId);
-        this.log?.(`%c#checkpoint full txId ${ckptId}`, 'background-color: lightgreen;');
-      } else {
-        // Not a full checkpoint, so find the lowest txId in use by any
-        // connection.
-        ckptId = (await this.#getTxIdLocks())
-          .reduce((min, value) => Math.min(min, value.maxTxId), this.#waFile.txId);
-        this.log?.(`%c#checkpoint partial txId ${ckptId}`, 'background-color: lightgreen;');
+      if (this.#waFile.isInactiveFileEmpty()) {
+        // Checkpoint is unnecessary.
+        return;
       }
+
+      let ckptId = this.#waFile.getActiveFileStartingTxId() - 1;
+      if (options.isPassive) {
+        // Scan the txId locks to find the oldest txId.
+        const busyTxId = (await this.#getTxIdLocks())
+          .reduce((min, value) => Math.min(min, value.maxTxId), this.#waFile.txId);
+
+        if (busyTxId < ckptId) {
+          // The inactive WAL file is still being used.
+          return;
+        }
+      } else {
+        // Wait for all connections to reach the current txId.
+        await this.#waitForTxIdLocks(value => value.maxTxId >= this.#waFile.txId);
+        ckptId = this.#waFile.txId;
+      }
+      this.log?.(`%ccheckpoint through txId ${ckptId}`, 'background-color: lightgreen;');
 
       // Sync the WAL file. This ensures that if there is a crash after
       // part of the WAL has been copied, the uncopied part will still be
       // available afterwards.
-      this.#waFile.activeHandle.flush();
+      this.#waFile.flushInactiveFile();
 
-      // Starting at ckptId and going backwards (earlier), write transaction
-      // pages to the main database file. Do not overwrite a page written
-      // by a later transaction.
+      // Starting at ckptId and going backwards (higher to lower txId),
+      // write transaction pages to the main database file. Do not overwrite
+      // a page written by a more recent transaction.
       const writtenOffsets = new Set();
       let dbFileSize = 0;
-      let tx = /** @type {Transaction} */ ({ id: ckptId + 1 });
-      while (tx = this.#mapIdToTx.get(tx.id - 1)) {
-        if (tx.id === ckptId) {
-          // Set the file size from the latest transaction. This may be
-          // unnecessary as SQLite is not known to reduce the database size
-          // except with VACUUM.
+      for (let tx = this.#mapIdToTx.get(ckptId); tx; tx = this.#mapIdToTx.get(tx.id - 1)) {
+        if (tx.id === ckptId && dbFileSize !== tx.dbFileSize) {
+          // Set the file size from the latest transaction.
           dbFileSize = tx.dbFileSize;
           this.#dbHandle.truncate(dbFileSize);
         }
@@ -440,32 +419,31 @@ export class WriteAhead {
               throw new Error('Checkpoint write failed');
             }
             writtenOffsets.add(offset);
-            this.log?.(`%c#checkpoint wrote txId ${tx.id} page at ${offset} to database`, 'background-color: lightgreen;');
+            this.log?.(`%ccheckpoint wrote txId ${tx.id} page at ${offset} to database`, 'background-color: lightgreen;');
           }
         }
       }
 
-      if (writtenOffsets.size > 0) {
-        if (ckptId == this.#waFile.txId) {
-          // Ensure data is safely in the file.
-          this.log?.(`%c#checkpoint flush database file`, 'background-color: lightgreen;');
-          this.#dbHandle.flush();
-        }
+      // Ensure that database writes are durable.
+      this.log?.(`%ccheckpoint flush database file`, 'background-color: lightgreen;');
+      this.#dbHandle.flush();
 
-        // Notify other connections and ourselves of the checkpoint.
-        this.#broadcastChannel.postMessage({
-          type: 'ckpt',
-          ckptId,
-        });
-        this.#handleCheckpoint(ckptId);
-      }
+      // Notify other connections and ourselves of the checkpoint.
+      this.#broadcastChannel.postMessage({
+        type: 'ckpt',
+        ckptId,
+      });
+      this.#handleCheckpoint(ckptId);
 
-      if (options.isRestart) {
-        // Wait for all connections to clear their overlay.
-        await this.#waitForTxIdLocks(value => value.minTxId > ckptId);
+      // Wait for all connections to update their overlay.
+      this.log?.(`%ccheckpoint waiting for connection updates`, 'background-color: lightgreen;');
+      await this.#waitForTxIdLocks(value => value.minTxId > ckptId);
 
-        this.#waFile.reset();
-      }
+      // Truncate the inactive WAL file. This prevents new connections from
+      // unnecessarily reading checkpointed data, and allows writers to make
+      // it active when their conditions are met.
+      this.#waFile.truncateInactiveFile();
+      this.log?.(`%ccheckpoint complete`, 'background-color: lightgreen;');
     });
   }
 
@@ -475,16 +453,16 @@ export class WriteAhead {
    * @param {number} ckptId 
    */
   #handleCheckpoint(ckptId) {
-    this.log?.(`%c#handleCheckpoint to txId ${ckptId}`, 'background-color: lightgreen;');
+    this.log?.(`%capply checkpoint through txId ${ckptId}`, 'background-color: lightgreen;');
 
     // Loop backwards from ckptId.
     let tx = /** @type {Transaction} */ ({ id: ckptId + 1 });
     while (tx = this.#mapIdToTx.get(tx.id - 1)) {
       // Remove pages from write-ahead overlay.
-      for (const [offset, page] of tx.pages.entries()) {
+      for (const [offset, pageEntry] of tx.pages.entries()) {
         // Be sure not to remove a newer version of the page.
-        const overlayPage = this.#waOverlay.get(offset);
-        if (overlayPage === page) {
+        const overlayEntry = this.#waOverlay.get(offset);
+        if (overlayEntry === pageEntry) {
           this.log?.(`%cremove txId ${tx.id} page at offset ${offset}`, 'background-color: lightgreen;');
           this.#waOverlay.delete(offset);
         }
@@ -532,6 +510,9 @@ export class WriteAhead {
           if (this.#waFile.txId > oldTxId) {
             this.log?.(`%cbackstop txId ${oldTxId} -> ${this.#waFile.txId}`, 'background-color: lightyellow;');
           }
+        } else if (this.#isolationState === 'read') {
+          // TODO: Peek to see if there may be new transactions.
+          // Check txId locks or read the next frame header.
         }
       }
     } catch (e) {
@@ -640,6 +621,7 @@ class WriteAheadFile {
   static FRAME_HEADER_SIZE = 32;
   static FRAME_TYPE_PAGE = 0;
   static FRAME_TYPE_COMMIT = 1;
+  static FRAME_TYPE_END = 2;
 
   /** @type {FileSystemSyncAccessHandle[]} */ accessHandles;
 
@@ -654,63 +636,61 @@ class WriteAheadFile {
   /**
    * @param {FileSystemSyncAccessHandle[]} accessHandles 
    */
-  constructor(accessHandles, options) {
+  constructor(accessHandles) {
     this.accessHandles = accessHandles;
 
-    if (options.create) {
-      this.activeHandle = accessHandles[0];
-      this.#writeFileHeader(-1);
-    }
-    this.open();
-  }
-
-  open() {
     // Read file headers from both header slots and use the one with the
-    // higher nextTxId.
-    const fileHeader = [0, SECTOR_SIZE]
-      .map(offset => this.#readFileHeader(offset))
+    // lower nextTxId. If neither header is valid, create a new header.
+    const fileHeader = this.accessHandles
+      .map(handle => this.#readFileHeader(handle))
       .filter(h => h)
-      .sort((a, b) => b.nextTxId - a.nextTxId)[0];
+      .sort((a, b) => a.nextTxId - b.nextTxId)[0]
+      ?? this.#writeFileHeader(-1);
     
-    this.activeOffset = WAL_FRAME_BASE;
     this.activeHeader = fileHeader;
+    this.activeHandle = this.accessHandles[fileHeader.salt1 & 1];
+    this.activeOffset = WriteAheadFile.FILE_HEADER_SIZE;
     this.txId = fileHeader.nextTxId - 1;
   }
 
-  reset(options = { truncate: true }) {
-    const fileHeader = this.#writeFileHeader();
-    if (options.truncate) {
-      this.activeHandle.truncate(WAL_FRAME_BASE);
-    }
+  // reset(options = { truncate: true }) {
+  //   const fileHeader = this.#writeFileHeader();
+  //   if (options.truncate) {
+  //     this.activeHandle.truncate(WAL_FRAME_BASE);
+  //   }
 
-    this.activeOffset = WAL_FRAME_BASE;
-    this.activeHeader = fileHeader;
-  }
+  //   this.activeOffset = WAL_FRAME_BASE;
+  //   this.activeHeader = fileHeader;
+  // }
 
-  checkReset() {
-    // Check for a new header. There are two header slots in the file.
-    // Look in the slot that is not current, which will be at offset 0
-    // or SECTOR_SIZE depending on the current salt1 value (salt1 is
-    // incremented on each new header).
-    const headerOffset = (this.activeHeader.salt1 & 0x1) ? 0 : SECTOR_SIZE;
-    const fileHeader = this.#readFileHeader(headerOffset);
-    if (fileHeader?.nextTxId > this.txId &&
-        fileHeader.salt1 === ((this.activeHeader.salt1 + 1) | 0)) {
-      // The WAL file has been reset.
-      this.activeOffset = WAL_FRAME_BASE;
-      this.activeHeader = fileHeader;
-      return true;
-    }
-    return false;
-  }
+  // checkReset() {
+  //   // Check for a new header. There are two header slots in the file.
+  //   // Look in the slot that is not current, which will be at offset 0
+  //   // or SECTOR_SIZE depending on the current salt1 value (salt1 is
+  //   // incremented on each new header).
+  //   const headerOffset = (this.activeHeader.salt1 & 0x1) ? 0 : SECTOR_SIZE;
+  //   const fileHeader = this.#readFileHeader(headerOffset);
+  //   if (fileHeader?.nextTxId > this.txId &&
+  //       fileHeader.salt1 === ((this.activeHeader.salt1 + 1) | 0)) {
+  //     // The WAL file has been reset.
+  //     this.activeOffset = WAL_FRAME_BASE;
+  //     this.activeHeader = fileHeader;
+  //     return true;
+  //   }
+  //   return false;
+  // }
 
   /**
    * @param {PageEntry} pageEntry 
    * @returns {Uint8Array}
    */
   fetchPage(pageEntry) {
+    // Get the appropriate access handle based on salt parity.
+    const accessHandle = this.accessHandles[pageEntry.waSalt1 & 1];
+
+    // Read the page.
     const pageData = new Uint8Array(pageEntry.pageSize);
-    const nBytesRead = this.activeHandle.read(pageData, { at: pageEntry.waOffset });
+    const nBytesRead = accessHandle.read(pageData, { at: pageEntry.waOffset });
 
     if (nBytesRead !== pageEntry.pageSize) {
       throw new Error(`Short WAL read: expected ${pageEntry.pageSize} bytes, got ${nBytesRead}`);
@@ -737,6 +717,14 @@ class WriteAheadFile {
       const frame = this.#readFrame(offset);
       if (!frame) return null;
 
+      if (frame.frameType === WriteAheadFile.FRAME_TYPE_END) {
+        // No more transactions on the current WAL file. Switch to the
+        // other file.
+        this.#changeActive();
+        offset = this.activeOffset;
+        continue;
+      }
+
       if (frame.frameType === WriteAheadFile.FRAME_TYPE_COMMIT) {
         // Update the instance state.
         this.txId += 1;
@@ -755,6 +743,7 @@ class WriteAheadFile {
           pages: new Map(),
           dbFileSize: 0, // placeholder
           dbPageSize: frame.pageData.byteLength,
+          waSalt1: frame.salt1,
           waOffsetEnd: 0 // placeholder
         };
       }
@@ -775,12 +764,19 @@ class WriteAheadFile {
    * This method is called when transaction(s) have been received by other
    * means than readTx(), e.g. via BroadcastChannel.
    * 
-   * @param {number} txId 
-   * @param {number} offset 
+   * @param {Transaction} tx 
    */
-  skipTx(txId, offset) {
-    this.txId = txId;
-    this.activeOffset = offset;
+  skipTx(tx) {
+    if (tx.waSalt1 !== this.activeHeader.salt1) {
+      // This transaction is on the other WAL file.
+      this.#changeActive();
+      if (this.activeHeader?.salt1 !== tx.waSalt1) {
+        throw new Error('WAL file salt mismatch');
+      }
+    }
+
+    this.txId = tx.id;
+    this.activeOffset = tx.waOffsetEnd;
   }
 
   /**
@@ -794,6 +790,7 @@ class WriteAheadFile {
       pages: new Map(),
       dbFileSize: 0,
       dbPageSize: 0,
+      waSalt1: this.activeHeader.salt1,
       waOffsetEnd: this.activeOffset
     };
     return this.txInProgress;
@@ -885,9 +882,76 @@ class WriteAheadFile {
     this.txInProgress = null;
   }
 
-  #readFileHeader(offset) {
+  /**
+   * Switch the active WAL file prior to writing the next transaction.
+   */
+  swapActiveFile() {
+    // Write an end frame to terminate the currently active WAL file.
+    const frameView = new DataView(new ArrayBuffer(WriteAheadFile.FRAME_HEADER_SIZE));
+    frameView.setUint8(0, WriteAheadFile.FRAME_TYPE_END);
+    frameView.setUint32(16, this.activeHeader.salt1);
+    frameView.setUint32(20, this.activeHeader.salt2);
+
+    const checksum = new Checksum();
+    checksum.update(new Uint8Array(frameView.buffer, 0, WriteAheadFile.FRAME_HEADER_SIZE - 8));
+    frameView.setUint32(24, checksum.s0);
+    frameView.setUint32(28, checksum.s1);
+
+    const bytesWritten =
+      this.activeHandle.write(frameView, { at: this.activeOffset });
+    if (bytesWritten !== frameView.byteLength) {
+      throw new Error('write failed');
+    }
+    
+    // Initialize the other WAL file and make it active.
+    this.activeHeader = this.#writeFileHeader();
+    this.activeHandle = this.#getInactiveHandle();
+    this.activeOffset = WriteAheadFile.FRAME_HEADER_SIZE;
+  }
+
+  getActiveFileStartingTxId() {
+    return this.activeHeader.nextTxId;
+  }
+
+  isInactiveFileEmpty() {
+    const accessHandle = this.#getInactiveHandle();
+    return accessHandle.getSize() === 0;
+  }
+
+  flushInactiveFile() {
+    const accessHandle = this.#getInactiveHandle();
+    accessHandle.flush();
+  }
+
+  truncateInactiveFile() {
+    const accessHandle = this.#getInactiveHandle();
+    accessHandle.truncate(0);
+  }
+
+  #changeActive() {
+    const accessHandle = this.#getInactiveHandle();
+    const fileHeader = this.#readFileHeader(accessHandle);
+    if (!fileHeader) {
+      throw new Error('invalid WAL file');
+    }
+
+    this.activeHandle = accessHandle;
+    this.activeHeader = fileHeader;
+    this.activeOffset = WriteAheadFile.FRAME_HEADER_SIZE;
+  }
+
+  #getInactiveHandle() {
+    return this.activeHandle !== this.accessHandles[0] ?
+      this.accessHandles[0] :
+      this.accessHandles[1];
+  }
+
+  /**
+   * @param {FileSystemSyncAccessHandle} accessHandle 
+   */
+  #readFileHeader(accessHandle) {
     const headerView = new DataView(new ArrayBuffer(WriteAheadFile.FILE_HEADER_SIZE));
-    if (this.activeHandle.read(headerView, { at: offset }) !== headerView.byteLength) {
+    if (accessHandle.read(headerView, { at: 0 }) !== headerView.byteLength) {
       return null;
     }
 
@@ -906,6 +970,9 @@ class WriteAheadFile {
     }
   }
 
+  /**
+   * @param {number} offset
+   */
   #readFrame(offset) {
     const headerView = new DataView(new ArrayBuffer(WriteAheadFile.FRAME_HEADER_SIZE));
     if (this.activeHandle.read(headerView, { at: offset }) !== headerView.byteLength) {
@@ -950,18 +1017,18 @@ class WriteAheadFile {
         byteLength: WriteAheadFile.FRAME_HEADER_SIZE + payloadSize,
         pageOffset: Number(headerView.getBigUint64(8)),
         pageData: payloadData
-      }
+      };
     } else if (frameType === WriteAheadFile.FRAME_TYPE_COMMIT) {
-      // Flags byte is currently unused. A possible future use would be
-      // to indicate an overwrite commit to trigger clearing the overlay.
-      // This might allow a page size change by VACUUM.
-      const flags = headerView.getUint8(1);
       return {
         frameType,
         byteLength: WriteAheadFile.FRAME_HEADER_SIZE,
-        dbFileSize: Number(headerView.getBigUint64(8)),
-        isOverwrite: !!(flags & 0x1)
-      }
+        dbFileSize: Number(headerView.getBigUint64(8))
+      };
+    } else if (frameType === WriteAheadFile.FRAME_TYPE_END) {
+      return {
+        frameType,
+        byteLength: WriteAheadFile.FRAME_HEADER_SIZE
+      };
     }
     throw new Error(`Invalid frame type: ${frameType}`);
   }
@@ -969,8 +1036,7 @@ class WriteAheadFile {
   #writeFileHeader(prevSalt1 = this.activeHeader.salt1) {
     // Derive new values from the previous values. Note that salt1 always
     // flips between even and odd so successive headers are written to
-    // alternating slots. If the write fails, the file remains in a valid
-    // state.
+    // alternating files.
     const nextTxId = this.txId + 1;
     const salt1 = (prevSalt1 + 1) | 0;
     const salt2 = Math.floor(Math.random() * 0xffffffff);
@@ -985,15 +1051,13 @@ class WriteAheadFile {
     headerView.setUint32(24, checksum.s0);
     headerView.setUint32(28, checksum.s1);
 
-    // A header with an even salt1 is written at offset 0, and with an
-    // odd salt1 at SECTOR_SIZE.
-    const headerOffset = (salt1 & 0x1) ? SECTOR_SIZE : 0;
-    const bytesWritten = this.activeHandle.write(headerView, { at: headerOffset });
+    // The even/odd parity of salt1 determines which file is written to.
+    const accessHandle = this.accessHandles[salt1 & 1];
+    const bytesWritten = accessHandle.write(headerView, { at: 0 });
     if (bytesWritten !== headerView.byteLength) {
       throw new Error('write failed');
     }
 
-    this.activeHandle.flush();
     return { nextTxId, salt1, salt2 };
   }
 }

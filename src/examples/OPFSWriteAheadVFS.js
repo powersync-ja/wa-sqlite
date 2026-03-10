@@ -644,6 +644,12 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
                 pArg.setUint32(0, ptr, true);
               }
               return VFS.SQLITE_OK;
+            case 'journal_size_limit':
+              if (value !== null) {
+                const nPages = parseInt(value);
+                file.writeAhead.options.journalSizeLimit = nPages;
+              }
+              break;
             case 'locking_mode':
               // Track SQLite locking mode. We will use write-ahead only in
               // normal locking mode.
@@ -689,8 +695,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
               return VFS.SQLITE_OK;
             case 'wal_autocheckpoint':
               if (value !== null) {
-                const nPages = parseInt(value);
-                file.writeAhead.options.autoCheckpointPages = Math.max(nPages, 0);
+                file.writeAhead.options.autoCheckpoint = parseInt(value);
               }
               break;
             case 'wal_checkpoint':
@@ -703,7 +708,6 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
                   if (file.lockState !== VFS.SQLITE_LOCK_NONE) {
                     throw new Error('invalid while database is locked');
                   }
-                  
                   this._module.pendingOps.push(this.#pendingCheckpoint(file, checkpointMode));
                   break;
                 case 'noop':
@@ -1026,11 +1030,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
         }));
 
         // Create the write-ahead manager.
-        const writeAhead = new WriteAhead(
-          zName,
-          accessHandle,
-          waHandles,
-          Object.assign({ create: isNewDatabase }, this.options));
+        const writeAhead = new WriteAhead(zName, accessHandle, waHandles);
         await writeAhead.ready();
 
         file.retryResult = { accessHandle, waHandles, journalHandle, writeAhead };
