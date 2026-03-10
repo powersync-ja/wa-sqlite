@@ -604,9 +604,11 @@ export class WriteAhead {
     // key in mapIdToTx. If mapIdToTx is empty then we aren't reading
     // from the WAL at all - in this case we arbitrarily set minTxId to
     // invalid value maxTxId + 1.
+    //
+    // Use radix 36 to encode integer values to reduce the lock name length.
     const maxTxId = this.#waFile.txId;
     const minTxId = this.#mapIdToTx.keys().next().value ?? (maxTxId + 1);
-    return `${this.#zName}-txId<${minTxId}:${maxTxId}>`;
+    return `${this.#zName}-txId<${minTxId.toString(36)}:${maxTxId.toString(36)}>`;
   }
 
   /**
@@ -614,13 +616,13 @@ export class WriteAhead {
    * @returns {{name: string, minTxId: number, maxTxId: number}}
    */
   #decodeTxIdLockName(lockName) {
-    const match = lockName.match(/^(.*)-txId<(\d+):(\d+)>$/);
+    const match = lockName.match(/^(.*)-txId<([0-9a-z]+):([0-9a-z]+)>$/);
     if (match?.[1] === this.#zName) {
       // This txId lock is for this database.
       return {
         name: match[1],
-        minTxId: parseInt(match[2]),
-        maxTxId: parseInt(match[3])
+        minTxId: parseInt(match[2], 36),
+        maxTxId: parseInt(match[3], 36)
       };
     }
     return null;
