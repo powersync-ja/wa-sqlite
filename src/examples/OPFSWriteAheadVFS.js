@@ -16,7 +16,7 @@ const finalizationRegistry = new FinalizationRegistry((/** @type {() => void} */
 
  * Main database file properties:
  * @property {*} [retryResult]
- * @property {FileSystemSyncAccessHandle} [waHandle]
+ * @property {FileSystemSyncAccessHandle[]} [waHandles]
  * @property {FileSystemSyncAccessHandle} [journalHandle]
  * 
  * @property {boolean} [useWriteAhead]
@@ -151,7 +151,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
         // Initialize database file state.
         file.accessHandle = file.retryResult.accessHandle;
         file.journalHandle = file.retryResult.journalHandle;
-        file.waHandle = file.retryResult.waHandle;
+        file.waHandles = file.retryResult.waHandles;
         file.writeAhead = file.retryResult.writeAhead;
         file.retryResult = null;
 
@@ -278,7 +278,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
       if (file?.flags & VFS.SQLITE_OPEN_MAIN_DB) {
         file.writeAhead.close();
         file.accessHandle.close();
-        file.waHandle.close();
+        file.waHandles.forEach(handle => handle.close());
         this.mapPathToFile.delete(file?.zName);
 
         file.journalHandle.close();
@@ -1016,8 +1016,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
           { create: true });
 
         // Open WAL files.
-        // TODO: WAL2
-        const waHandles = await Promise.all([0].map(async i => {
+        const waHandles = await Promise.all([0, 1].map(async i => {
           const waName = this.#getWriteAheadNameFromDbName(dbName, i);
           const waHandle = await openFile(waName, { create: true });
           if (isNewDatabase) {
@@ -1030,11 +1029,11 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
         const writeAhead = new WriteAhead(
           zName,
           accessHandle,
-          waHandles[0],
+          waHandles,
           Object.assign({ create: isNewDatabase }, this.options));
         await writeAhead.ready();
 
-        file.retryResult = { accessHandle, waHandle: waHandles[0], journalHandle, writeAhead };
+        file.retryResult = { accessHandle, waHandles, journalHandle, writeAhead };
       });
     } catch (e) {
       while (onError.length) {
