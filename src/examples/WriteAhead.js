@@ -1,6 +1,6 @@
 import { Lock } from './Lock.js';
 
-const DEFAULT_JOURNAL_SIZE_LIMIT = 5;
+const DEFAULT_JOURNAL_SIZE_LIMIT = 1000;
 const DEFAULT_BACKSTOP_INTERVAL = 30_000;
 
 /**
