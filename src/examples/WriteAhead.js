@@ -645,7 +645,7 @@ class WriteAheadFile {
       .map(handle => this.#readFileHeader(handle))
       .filter(h => h)
       .sort((a, b) => a.nextTxId - b.nextTxId)[0]
-      ?? this.#writeFileHeader(-1);
+      ?? this.#writeFileHeader(Math.floor(Math.random() * 0xffffffff));
     
     this.activeHeader = fileHeader;
     this.activeHandle = this.accessHandles[fileHeader.salt1 & 1];
@@ -905,7 +905,10 @@ class WriteAheadFile {
     if (!fileHeader) {
       throw new Error('invalid WAL file');
     }
-
+    if (fileHeader.salt1 !== ((this.activeHeader.salt1 + 1) | 0)) {
+      throw new Error('invalid salt1 on WAL file change');
+    }
+ 
     this.activeHandle = accessHandle;
     this.activeHeader = fileHeader;
     this.activeOffset = WriteAheadFile.FRAME_HEADER_SIZE;
