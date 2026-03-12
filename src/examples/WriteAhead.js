@@ -653,33 +653,6 @@ class WriteAheadFile {
     this.txId = fileHeader.nextTxId - 1;
   }
 
-  // reset(options = { truncate: true }) {
-  //   const fileHeader = this.#writeFileHeader();
-  //   if (options.truncate) {
-  //     this.activeHandle.truncate(WAL_FRAME_BASE);
-  //   }
-
-  //   this.activeOffset = WAL_FRAME_BASE;
-  //   this.activeHeader = fileHeader;
-  // }
-
-  // checkReset() {
-  //   // Check for a new header. There are two header slots in the file.
-  //   // Look in the slot that is not current, which will be at offset 0
-  //   // or SECTOR_SIZE depending on the current salt1 value (salt1 is
-  //   // incremented on each new header).
-  //   const headerOffset = (this.activeHeader.salt1 & 0x1) ? 0 : SECTOR_SIZE;
-  //   const fileHeader = this.#readFileHeader(headerOffset);
-  //   if (fileHeader?.nextTxId > this.txId &&
-  //       fileHeader.salt1 === ((this.activeHeader.salt1 + 1) | 0)) {
-  //     // The WAL file has been reset.
-  //     this.activeOffset = WAL_FRAME_BASE;
-  //     this.activeHeader = fileHeader;
-  //     return true;
-  //   }
-  //   return false;
-  // }
-
   /**
    * @param {PageEntry} pageEntry 
    * @returns {Uint8Array}
@@ -717,44 +690,42 @@ class WriteAheadFile {
       const frame = this.#readFrame(offset);
       if (!frame) return null;
 
-      if (frame.frameType === WriteAheadFile.FRAME_TYPE_END) {
+      if (frame.frameType === WriteAheadFile.FRAME_TYPE_PAGE) {
+        if (!tx) {
+          tx = {
+            id: 0, // placeholder
+            pages: new Map(),
+            dbFileSize: 0, // placeholder
+            dbPageSize: frame.pageData.byteLength,
+            waSalt1: this.activeHeader.salt1,
+            waOffsetEnd: 0 // placeholder
+          };
+        }
+
+        tx.pages.set(
+          frame.pageOffset,
+          {
+            pageSize: frame.pageData.byteLength,
+            waOffset: offset + WriteAheadFile.FRAME_HEADER_SIZE,
+            waSalt1: tx.waSalt1
+        });
+      } else if (frame.frameType === WriteAheadFile.FRAME_TYPE_COMMIT) {
+        // The transaction is complete. Update the instance state.
+        this.txId += 1;
+        this.activeOffset = offset + frame.byteLength;
+  
+        // Finalize the transaction fields and return it.
+        tx.id = this.txId;
+        tx.dbFileSize = frame.dbFileSize;
+        tx.waOffsetEnd = this.activeOffset;
+        return tx;
+      } else if (frame.frameType === WriteAheadFile.FRAME_TYPE_END) {
         // No more transactions on the current WAL file. Switch to the
         // other file.
         this.#changeActive();
         offset = this.activeOffset;
         continue;
       }
-
-      if (frame.frameType === WriteAheadFile.FRAME_TYPE_COMMIT) {
-        // Update the instance state.
-        this.txId += 1;
-        this.activeOffset = offset + frame.byteLength;
-  
-        tx.id = this.txId;
-        tx.dbFileSize = frame.dbFileSize;
-        tx.waOffsetEnd = this.activeOffset;
-        return tx;
-      }
-
-      // frameType === WriteAheadFile.FRAME_TYPE_PAGE
-      if (!tx) {
-        tx = {
-          id: 0, // placeholder
-          pages: new Map(),
-          dbFileSize: 0, // placeholder
-          dbPageSize: frame.pageData.byteLength,
-          waSalt1: frame.salt1,
-          waOffsetEnd: 0 // placeholder
-        };
-      }
-
-      tx.pages.set(
-        frame.pageOffset,
-        {
-          pageSize: frame.pageData.byteLength,
-          waOffset: offset + WriteAheadFile.FRAME_HEADER_SIZE,
-          waSalt1: frame.salt1
-       });
 
       offset += frame.byteLength;
     }
