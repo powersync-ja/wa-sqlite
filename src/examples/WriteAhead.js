@@ -360,6 +360,11 @@ export class WriteAhead {
    * @param {{isPassive: boolean}} options
    */
   async #checkpoint(options = { isPassive: true }) {
+    if (this.#waFile.isInactiveFileEmpty()) {
+      // Checkpoint is unnecessary.
+      return;
+    }
+
     // Passive checkpointing is abandoned if another connection is
     // already checkpointing.
     const lockOptions = {
@@ -368,11 +373,6 @@ export class WriteAhead {
 
     await navigator.locks.request(`${this.#zName}-ckpt`, lockOptions, async lock => {
       if (!lock) return;
-
-      if (this.#waFile.isInactiveFileEmpty()) {
-        // Checkpoint is unnecessary.
-        return;
-      }
 
       let ckptId = this.#waFile.getActiveFileStartingTxId() - 1;
       if (options.isPassive) {
@@ -400,7 +400,7 @@ export class WriteAhead {
       // write transaction pages to the main database file. Do not overwrite
       // a page written by a more recent transaction.
       const writtenOffsets = new Set();
-      let dbFileSize = 0;
+      let dbFileSize = this.#dbHandle.getSize();
       for (let tx = this.#mapIdToTx.get(ckptId); tx; tx = this.#mapIdToTx.get(tx.id - 1)) {
         if (tx.id === ckptId && dbFileSize !== tx.dbFileSize) {
           // Set the file size from the latest transaction.
