@@ -294,6 +294,9 @@ export class WriteAhead {
       // part of the WAL has been copied, the uncopied part will still be
       // available afterwards.
       this.#waFile.flushInactiveFile();
+      if (!options.isPassive) {
+        this.#waFile.flushActiveFile();
+      }
 
       // Starting at ckptId and going backwards (higher to lower txId),
       // write transaction pages to the main database file. Do not overwrite
@@ -863,14 +866,18 @@ class WriteAheadFile {
     return this.activeHeader.nextTxId;
   }
 
-  isInactiveFileEmpty() {
-    const accessHandle = this.#getInactiveHandle();
-    return accessHandle.getSize() === 0;
+  flushActiveFile() {
+    this.activeHandle.flush();
   }
-
+  
   flushInactiveFile() {
     const accessHandle = this.#getInactiveHandle();
     accessHandle.flush();
+  }
+
+  isInactiveFileEmpty() {
+    const accessHandle = this.#getInactiveHandle();
+    return accessHandle.getSize() === 0;
   }
 
   truncateInactiveFile() {
