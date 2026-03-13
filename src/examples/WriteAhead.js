@@ -702,7 +702,7 @@ class WriteAheadFile {
       } else if (frame.frameType === WriteAheadFile.FRAME_TYPE_END) {
         // No more transactions on the current WAL file. Switch to the
         // other file.
-        this.#followFileChange();
+        this.#followFileChange(frame.fileHeader);
         offset = this.activeOffset;
         continue;
       }
@@ -720,7 +720,7 @@ class WriteAheadFile {
   skipTx(tx) {
     if (tx.waSalt1 !== this.activeHeader.salt1) {
       // This transaction is on the other WAL file.
-      if (!this.#followFileChange()) {
+      if (!this.#followFileChange(null)) {
         throw new Error('invalid WAL file');
       }
     }
@@ -878,12 +878,19 @@ class WriteAheadFile {
     accessHandle.truncate(0);
   }
 
-  #followFileChange() {
+  /**
+   * @param {{nextTxId: number, salt1: number, salt2: number}?} fileHeader
+   */
+  #followFileChange(fileHeader) {
+    // As an optimization, the file header can be passed as an argument
+    // if it has already been read and validated. Otherwise that is
+    // done here.
     const accessHandle = this.#getInactiveHandle();
-    const fileHeader = this.#readFileHeader(accessHandle);
-    if (!fileHeader) return null;
-    if (fileHeader.salt1 !== ((this.activeHeader.salt1 + 1) | 0)) return null;
- 
+    if (!fileHeader) {
+      fileHeader = this.#readFileHeader(accessHandle);
+      if (fileHeader?.salt1 !== ((this.activeHeader.salt1 + 1) >>> 0)) return null;
+    }
+
     this.activeHandle = accessHandle;
     this.activeHeader = fileHeader;
     this.activeOffset = WriteAheadFile.FRAME_HEADER_SIZE;
@@ -975,9 +982,26 @@ class WriteAheadFile {
         dbFileSize: Number(headerView.getBigUint64(8))
       };
     } else if (frameType === WriteAheadFile.FRAME_TYPE_END) {
+      // Handling the end frame and new file header must be atomic, so
+      // we validate the new file header before returning the frame.
+      // If the file header is corrupt, the end frame effectively does
+      // not exist.
+      //
+      // How do we recover from this? If the file is empty then a writer
+      // will overwrite the end frame (either with a transaction or a
+      // new end frame with a file header) and that will restore a valid
+      // state.
+      //
+      // If the file is not empty, then the file should be truncated on
+      // the next checkpoint to restore a valid state. In the meantime
+      // writers may overwrite the end frame with new transactions.
+      const fileHeader = this.#readFileHeader(this.#getInactiveHandle());
+      if (fileHeader?.salt1 !== ((this.activeHeader.salt1 + 1) >>> 0)) return null;
+
       return {
         frameType,
-        byteLength: WriteAheadFile.FRAME_HEADER_SIZE
+        byteLength: WriteAheadFile.FRAME_HEADER_SIZE,
+        fileHeader
       };
     }
     throw new Error(`Invalid frame type: ${frameType}`);
@@ -988,8 +1012,8 @@ class WriteAheadFile {
     // flips between even and odd so successive headers are written to
     // alternating files.
     const nextTxId = this.txId + 1;
-    const salt1 = (prevSalt1 + 1) | 0;
-    const salt2 = Math.floor(Math.random() * 0xffffffff);
+    const salt1 = (prevSalt1 + 1) >>> 0;
+    const salt2 = Math.floor(Math.random() * 0xffffffff) >>> 0;
     const headerView = new DataView(new ArrayBuffer(WriteAheadFile.FILE_HEADER_SIZE));
     headerView.setUint32(0, WriteAheadFile.MAGIC);
     headerView.setBigUint64(8, BigInt(nextTxId));
