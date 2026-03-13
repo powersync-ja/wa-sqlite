@@ -768,23 +768,19 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
   }
 
   /**
-   * @param {string} journalName 
-   * @returns {FileEntry}
-   */
-  #getDbFileFromJournalName(journalName) {
-    const dbFilename = journalName.slice(0, -'-journal'.length);
-    return this.mapPathToFile.get(dbFilename);
-  }
-
-  /**
    * Asynchronous PRAGMA operation to checkpoint the write-ahead log.
    * @param {FileEntry} file 
    * @param {'passive'|'full'|'restart'|'truncate'} mode 
    */
   async #pendingCheckpoint(file, mode) {
+    const onFinally = [];
     try {
       if (mode !== 'passive') {
         await file.writeLock.acquire('exclusive');
+        onFinally.push(() => file.writeLock.release());
+
+        file.writeAhead.isolateForWrite();
+        onFinally.push(() => file.writeAhead.rejoin());
       }
       
       await file.writeAhead.checkpoint(mode);
@@ -794,7 +790,9 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
       }
       throw e;
     } finally {
-      file.writeLock.release();
+      while (onFinally.length) {
+        onFinally.pop()();
+      }
     }
   }
 
@@ -832,30 +830,6 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
   }
 
   /**
-   * @param {FileEntry} file 
-   */
-  async #retryLockExclusive(file) {
-    try {
-      // This transaction will write directly to the database,
-      // i.e. not using write-ahead. Get exclusive access.
-      await file.readLock.acquire('exclusive', file.timeout);
-      await file.writeLock.acquire('exclusive', file.timeout);
-
-      // Transfer everything in write-ahead to the OPFS file.
-      await file.writeAhead.checkpoint('restart');
-      file.retryResult = {};
-    } catch (e) {
-      if (file.writeLock.mode) {
-        file.writeLock.release();
-      }
-      if (file.readLock.mode) {
-        file.readLock.release();
-      }
-      file.retryResult = e;
-    }
-  }
-
-  /**
    * Handle asynchronous jOpen() tasks.
    * @param {string} zName 
    * @param {number} flags 
@@ -867,7 +841,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
     /** @type {(() => void)[]} */ const onError = [];
     const file = this.mapPathToFile.get(zName);
     try {
-      await navigator.locks.request(`${zName}#open`, async lock => {
+      await navigator.locks.request(`${zName}#ckpt`, async lock => {
         // Parse the path components.
         const directoryNames = zName.split('/').filter(d => d);
         const dbName = directoryNames.pop();
