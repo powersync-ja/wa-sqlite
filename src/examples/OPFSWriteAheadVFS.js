@@ -783,7 +783,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
         onFinally.push(() => file.writeAhead.rejoin());
       }
       
-      await file.writeAhead.checkpoint(mode);
+      await file.writeAhead.checkpoint({ isPassive: mode === 'passive' });
     } catch (e) {
       if (e.name === 'AbortError') {
         e.code = VFS.SQLITE_BUSY;
