@@ -71,21 +71,19 @@ export class WriteAhead {
     // All the asynchronous initialization is done here.
     this.#ready = (async () => {
       // Disable checkpointing by other connections until we're ready.
-      await navigator.locks.request(`${this.#zName}-ckpt`, async () => {
-        await this.#updateTxIdLock();
-      });
-
-      // Load all the transactions from the WAL file.
-      for (const tx of this.#waFile.readAllTx()) {
-        this.#activateTx(tx);
-      }
-      this.#updateTxIdLock(); // doesn't need await
+      await this.#updateTxIdLock();
 
       // Listen for transactions and checkpoints from other connections.
       this.#broadcastChannel = new BroadcastChannel(`${zName}#wa`);
       this.#broadcastChannel.onmessage = (event) => {
         this.#handleMessage(event);
       };
+
+      // Load all the transactions from the WAL file.
+      for (const tx of this.#waFile.readAllTx()) {
+        this.#activateTx(tx);
+      }
+      this.#updateTxIdLock(); // doesn't need await
 
       // Schedule backstop. The backstop is a guard against a crash in
       // another context between persisting a transaction and broadcasting
@@ -261,16 +259,7 @@ export class WriteAhead {
    * @param {'passive'|'full'|'restart'|'truncate'} mode
    */
   async checkpoint(mode) {
-    if (mode !== 'passive') {
-      this.isolateForWrite();
-    }
-    try {
-      await this.#checkpoint({ isPassive: mode === 'passive' });
-    } finally {
-      if (mode !== 'passive') {
-        this.rejoin();
-      }
-    }
+    await this.#checkpoint({ isPassive: mode === 'passive' });
   }
 
   /**
@@ -360,7 +349,7 @@ export class WriteAhead {
    * @param {{isPassive: boolean}} options
    */
   async #checkpoint(options = { isPassive: true }) {
-    if (this.#waFile.isInactiveFileEmpty()) {
+    if (this.#waFile.isInactiveFileEmpty() && options.isPassive) {
       // Checkpoint is unnecessary.
       return;
     }
@@ -371,7 +360,7 @@ export class WriteAhead {
       ifAvailable: options.isPassive,
     };
 
-    await navigator.locks.request(`${this.#zName}-ckpt`, lockOptions, async lock => {
+    await navigator.locks.request(`${this.#zName}#ckpt`, lockOptions, async lock => {
       if (!lock) return;
 
       let ckptId = this.#waFile.getActiveFileStartingTxId() - 1;
@@ -708,7 +697,7 @@ class WriteAheadFile {
             pageSize: frame.pageData.byteLength,
             waOffset: offset + WriteAheadFile.FRAME_HEADER_SIZE,
             waSalt1: tx.waSalt1
-        });
+          });
       } else if (frame.frameType === WriteAheadFile.FRAME_TYPE_COMMIT) {
         // The transaction is complete. Update the instance state.
         this.txId += 1;
