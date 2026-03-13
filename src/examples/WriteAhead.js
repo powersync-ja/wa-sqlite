@@ -254,101 +254,11 @@ export class WriteAhead {
   }
 
   /**
-   * Flush all write-ahead transactions to the main database file.
-   * There must be no other connections reading or writing.
-   * @param {'passive'|'full'|'restart'|'truncate'} mode
-   */
-  async checkpoint(mode) {
-    await this.#checkpoint({ isPassive: mode === 'passive' });
-  }
-
-  /**
-   * Return the approximate number of write-ahead pages. This is the
-   * sum of the number of unique page indices for each transaction,
-   * so it can be fewer than the number of pages if any transaction
-   * contains multiple frames for the same page.
-   * @returns {number}
-   */
-  getWriteAheadSize() {
-    return this.#mapIdToTxPageCount;
-  }
-
-  /**
-   * Incorporate a transaction into our view of the database.
-   * @param {Transaction} tx 
-   */
-  #activateTx(tx) {
-    // Transfer to the active collection of transactions.
-    this.#mapIdToTx.set(tx.id, tx);
-    this.#mapIdToTxPageCount += tx.pages.size;
-  
-    // Add transaction pages to the write-ahead overlay.
-    for (const [offset, pageEntry] of tx.pages) {
-      this.#waOverlay.set(offset, pageEntry);
-    }
-    this.#dbFileSize = tx.dbFileSize;
-  }
-
-  /**
-   * Advance the local view of the database. By default, advance to the
-   * last broadcast transaction. Optionally, also advance through any
-   * additional transactions in the WAL file to be fully current.
-   * 
-   * @param {{readToCurrent?: boolean, autoCheckpoint?: boolean}} options
-   */
-  #advanceTxId(options = {}) {
-    let didAdvance = false;
-    while (this.#pendingTx.size) {
-      // Fetch the next transaction in sequence. Usually this will come
-      // from pendingTx, but if it is missing then read it from the file.
-      const nextTxId = this.#waFile.txId + 1;
-      let tx;
-      if (this.#pendingTx.has(nextTxId)) {
-        // This transaction arrived via message.
-        tx = this.#pendingTx.get(nextTxId);
-        this.#pendingTx.delete(tx.id);
-
-        // Move the WAL file offset past this transaction.
-        this.#waFile.skipTx(tx);
-      } else {
-        // Read the transaction from the WAL file.
-        tx = this.#waFile.readTx();
-      }
-
-      this.#activateTx(tx);
-      didAdvance = true;
-    }
-
-    if (options.readToCurrent) {
-      // Read all additional transactions from the WAL file.
-      for (const tx of this.#waFile.readAllTx()) {
-        this.#activateTx(tx);
-        didAdvance = true;
-      }
-    }
-
-    if (didAdvance) {
-      // Publish our new view txId.
-      this.#updateTxIdLock();
-
-      if (options.autoCheckpoint) {
-        this.#autoCheckpoint();
-      }
-    }
-  }
-
-  #autoCheckpoint() {
-    if (this.options.autoCheckpoint > 0) {
-      this.#checkpoint({ isPassive: true });
-    }
-  }
-
-  /**
    * Move pages from write-ahead to main database file.
    * 
    * @param {{isPassive: boolean}} options
    */
-  async #checkpoint(options = { isPassive: true }) {
+  async checkpoint(options = { isPassive: true }) {
     if (this.#waFile.isInactiveFileEmpty() && options.isPassive) {
       // Checkpoint is unnecessary.
       return;
@@ -434,6 +344,87 @@ export class WriteAhead {
       this.#waFile.truncateInactiveFile();
       this.log?.(`%ccheckpoint complete`, 'background-color: lightgreen;');
     });
+  }
+
+  /**
+   * Return the approximate number of write-ahead pages. This is the
+   * sum of the number of unique page indices for each transaction,
+   * so it can be fewer than the number of pages if any transaction
+   * contains multiple frames for the same page.
+   * @returns {number}
+   */
+  getWriteAheadSize() {
+    return this.#mapIdToTxPageCount;
+  }
+
+  /**
+   * Incorporate a transaction into our view of the database.
+   * @param {Transaction} tx 
+   */
+  #activateTx(tx) {
+    // Transfer to the active collection of transactions.
+    this.#mapIdToTx.set(tx.id, tx);
+    this.#mapIdToTxPageCount += tx.pages.size;
+  
+    // Add transaction pages to the write-ahead overlay.
+    for (const [offset, pageEntry] of tx.pages) {
+      this.#waOverlay.set(offset, pageEntry);
+    }
+    this.#dbFileSize = tx.dbFileSize;
+  }
+
+  /**
+   * Advance the local view of the database. By default, advance to the
+   * last broadcast transaction. Optionally, also advance through any
+   * additional transactions in the WAL file to be fully current.
+   * 
+   * @param {{readToCurrent?: boolean, autoCheckpoint?: boolean}} options
+   */
+  #advanceTxId(options = {}) {
+    let didAdvance = false;
+    while (this.#pendingTx.size) {
+      // Fetch the next transaction in sequence. Usually this will come
+      // from pendingTx, but if it is missing then read it from the file.
+      const nextTxId = this.#waFile.txId + 1;
+      let tx;
+      if (this.#pendingTx.has(nextTxId)) {
+        // This transaction arrived via message.
+        tx = this.#pendingTx.get(nextTxId);
+        this.#pendingTx.delete(tx.id);
+
+        // Move the WAL file offset past this transaction.
+        this.#waFile.skipTx(tx);
+      } else {
+        // Read the transaction from the WAL file.
+        tx = this.#waFile.readTx();
+      }
+
+      this.#activateTx(tx);
+      didAdvance = true;
+    }
+
+    if (options.readToCurrent) {
+      // Read all additional transactions from the WAL file.
+      for (const tx of this.#waFile.readAllTx()) {
+        this.#activateTx(tx);
+        didAdvance = true;
+      }
+    }
+
+    if (didAdvance) {
+      // Publish our new view txId.
+      this.#updateTxIdLock();
+
+      if (options.autoCheckpoint) {
+        this.#autoCheckpoint();
+      }
+    }
+  }
+
+  #autoCheckpoint() {
+    if (this.options.autoCheckpoint > 0) {
+      this.checkpoint({ isPassive: true });
+    }
   }
 
   /**
@@ -711,7 +702,7 @@ class WriteAheadFile {
       } else if (frame.frameType === WriteAheadFile.FRAME_TYPE_END) {
         // No more transactions on the current WAL file. Switch to the
         // other file.
-        this.#changeActive();
+        this.#followFileChange();
         offset = this.activeOffset;
         continue;
       }
@@ -729,9 +720,8 @@ class WriteAheadFile {
   skipTx(tx) {
     if (tx.waSalt1 !== this.activeHeader.salt1) {
       // This transaction is on the other WAL file.
-      this.#changeActive();
-      if (this.activeHeader?.salt1 !== tx.waSalt1) {
-        throw new Error('WAL file salt mismatch');
+      if (!this.#followFileChange()) {
+        throw new Error('invalid WAL file');
       }
     }
 
@@ -888,19 +878,16 @@ class WriteAheadFile {
     accessHandle.truncate(0);
   }
 
-  #changeActive() {
+  #followFileChange() {
     const accessHandle = this.#getInactiveHandle();
     const fileHeader = this.#readFileHeader(accessHandle);
-    if (!fileHeader) {
-      throw new Error('invalid WAL file');
-    }
-    if (fileHeader.salt1 !== ((this.activeHeader.salt1 + 1) | 0)) {
-      throw new Error('invalid salt1 on WAL file change');
-    }
+    if (!fileHeader) return null;
+    if (fileHeader.salt1 !== ((this.activeHeader.salt1 + 1) | 0)) return null;
  
     this.activeHandle = accessHandle;
     this.activeHeader = fileHeader;
     this.activeOffset = WriteAheadFile.FRAME_HEADER_SIZE;
+    return fileHeader;
   }
 
   #getInactiveHandle() {
