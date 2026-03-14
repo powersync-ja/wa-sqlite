@@ -104,7 +104,6 @@ export class WriteAhead {
     this.#broadcastChannel.onmessage = null;
     clearTimeout(this.#backstopTimer);
 
-    // Wait for any pending commit to complete.
     this.#txIdLock?.release();
     this.#broadcastChannel.close();
   }
@@ -112,8 +111,7 @@ export class WriteAhead {
   /**
    * Freeze our view of the database.
    * The view includes the transactions received so far but is not
-   * guaranteed to be completely up to date (this allows this method
-   * to be synchronous). Unfreeze the view with rejoin().
+   * guaranteed to be completely up to date. Unfreeze the view with rejoin().
    */
   isolateForRead() {
     if (this.#isolationState !== null) {
@@ -439,8 +437,7 @@ export class WriteAhead {
     this.log?.(`%capply checkpoint through txId ${ckptId}`, 'background-color: lightgreen;');
 
     // Loop backwards from ckptId.
-    let tx = /** @type {Transaction} */ ({ id: ckptId + 1 });
-    while (tx = this.#mapIdToTx.get(tx.id - 1)) {
+    for (let tx = this.#mapIdToTx.get(ckptId); tx; tx = this.#mapIdToTx.get(tx.id - 1)) {
       // Remove pages from write-ahead overlay.
       for (const [offset, pageEntry] of tx.pages.entries()) {
         // Be sure not to remove a newer version of the page.
@@ -805,6 +802,8 @@ class WriteAheadFile {
    * @returns {Transaction}
    */
   commitTx() {
+    // Write a commit frame - which is a special frame header with no
+    // body - to the WAL file.
     const headerView = new DataView(new ArrayBuffer(WriteAheadFile.FRAME_HEADER_SIZE));
     headerView.setUint8(0, WriteAheadFile.FRAME_TYPE_COMMIT);
     headerView.setBigUint64(8, BigInt(this.txInProgress.dbFileSize));
@@ -886,6 +885,8 @@ class WriteAheadFile {
   }
 
   /**
+   * This method is called after reading an end frame to switch to the
+   * other WAL file.
    * @param {{nextTxId: number, salt1: number, salt2: number}?} fileHeader
    */
   #followFileChange(fileHeader) {
@@ -994,14 +995,14 @@ class WriteAheadFile {
       // If the file header is corrupt, the end frame effectively does
       // not exist.
       //
-      // How do we recover from this? If the file is empty then a writer
-      // will overwrite the end frame (either with a transaction or a
-      // new end frame with a file header) and that will restore a valid
-      // state.
+      // How do we recover from this? Readers and writers will continue
+      // normally. If the inactive file is empty then a writer will
+      // overwrite the end frame (either with a transaction or a
+      // new end frame with a file header) and that will restore a
+      // valid state.
       //
-      // If the file is not empty, then the file should be truncated on
-      // the next checkpoint to restore a valid state. In the meantime
-      // writers may overwrite the end frame with new transactions.
+      // If the inactive file is not empty, then it should be truncated
+      // on the next checkpoint and that will restore a valid state.
       const fileHeader = this.#readFileHeader(this.#getInactiveHandle());
       if (fileHeader?.salt1 !== ((this.activeHeader.salt1 + 1) >>> 0)) return null;
 
