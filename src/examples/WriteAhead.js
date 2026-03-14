@@ -249,7 +249,7 @@ export class WriteAhead {
    */
   sync(options) {
     if (options.durability === 'strict') {
-      this.#waFile.flushInactiveFile();
+      this.#waFile.flushActiveFile();
     }
   }
 
