@@ -33,9 +33,8 @@ const finalizationRegistry = new FinalizationRegistry((/** @type {() => void} */
 /**
  * @typedef OPFSWriteAheadOptions
  * @property {number} [nTmpFiles]
- * @property {number} [autoCheckpointPages]
- * @property {number} [heartbeatInterval]
- * @property {number} [heartbeatActionDelay]
+ * @property {number} [autoCheckpoint]
+ * @property {number} [backstopInterval]
  */
 
 export class OPFSWriteAheadVFS extends FacadeVFS {
@@ -231,9 +230,6 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
 
         file.readLock.close();
         file.writeLock.close();
-      } else if (file?.flags & VFS.SQLITE_OPEN_MAIN_JOURNAL) {
-        // The actual OPFS journal file is managed with the main database
-        // file, so don't close the access handle here.
       } else if (file?.flags & VFS.SQLITE_OPEN_DELETEONCLOSE) {
         this.#deleteTemporaryFile(file);
       }
@@ -511,10 +507,8 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
    * @returns {number}
    */
   jCheckReservedLock(pFile, pResOut) {
-    // This function is only called in the SHARED lock state, and when
-    // a potentially hot journal file exists. Such a journal can only
-    // be created without using write-ahead, and such a connection
-    // cannot co-exist with this connection in SHARED.
+    // A hot journal cannot exist so this method should never be called.
+    console.assert(false, 'unexpected');
     pResOut.setInt32(0, 0, true);
     return VFS.SQLITE_OK;
   }
@@ -537,9 +531,8 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
           switch (key.toLowerCase()) {
             case 'experimental_pragma_20251114':
               // After entering the SHARED locking state on the next
-              // transaction, SQLite intends to immediately (barring a hot
-              // journal) transition to RESERVED if value is '1', or
-              // EXCLUSIVE if value is '2'.
+              // transaction, SQLite intends to immediately transition to
+              // RESERVED if value is '1', or EXCLUSIVE if value is '2'.
               switch (value) {
                 case '1':
                   file.writeHint = 'reserved';
@@ -551,6 +544,18 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
                   throw new Error(`unexpected write hint value: ${value}`);
               }
               break;
+            case 'backstop_interval':
+              if (value !== null) {
+                const millis = parseInt(value);
+                file.writeAhead.options.backstopInterval = millis;
+              } else {
+                // Return current interval.
+                const s = file.writeAhead.options.backstopInterval.toString();
+                const ptr = this._module._sqlite3_malloc64(s.length + 1);
+                this._module.stringToUTF8(s, ptr, s.length + 1);
+                pArg.setUint32(0, ptr, true);
+              }
+              return VFS.SQLITE_OK;
             case 'busy_timeout':
               // Override SQLite's handling of busy timeouts with our
               // blocking lock timeouts.
@@ -571,8 +576,8 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
               }
               break;
             case 'locking_mode':
-              // Track SQLite locking mode. We will use write-ahead only in
-              // normal locking mode.
+              // Track SQLite locking mode. Exclusive mode requires a
+              // write lock.
               switch (value?.toLowerCase()) {
                 case 'normal':
                   file.lockingMode = 'normal';
@@ -583,6 +588,9 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
               }
               break;
             case 'synchronous':
+              // Track SQLite synchronous mode. Write-ahead transactions
+              // trade durability for performance on values 1 (NORMAL) or
+              // lower.
               if (value !== null) {
                 switch (value.toLowerCase()) {
                   case 'off':
@@ -614,6 +622,8 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
               }
               return VFS.SQLITE_OK;
             case 'wal_autocheckpoint':
+              // A setting greater than zero enables automatic checkpoints
+              // with this connection (enabled by default).
               if (value !== null) {
                 file.writeAhead.options.autoCheckpoint = parseInt(value);
               }
@@ -636,9 +646,9 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
                   throw new Error(`unexpected wal_checkpoint mode: ${value}`);
               }
 
-              // Return the approximate size of the write-ahead data (which
-              // may be smaller than the actual file size). SQLite returns
-              // different information, but that is not feasible from a VFS.
+              // Return the approximate number of pages in the WAL before
+              // checkpointing. SQLite returns different information, but
+              // that is not feasible from a VFS.
               {
                 const s = file.writeAhead.getWriteAheadSize().toString();
                 const ptr = this._module._sqlite3_malloc64(s.length + 1);
@@ -647,6 +657,9 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
               }
               return VFS.SQLITE_OK;
             case 'lazy_lock':
+              // Lazy locks don't actually release their Web Lock until
+              // they receive a message requesting it. Typically a setting
+              // of 'readwrite' (default) or 'read' is best.
               if (value !== null) {
                 const useLazyLock = value.toLowerCase();
                 switch (useLazyLock) {
@@ -747,14 +760,6 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
     this.mapPathToFile.delete(file.zName);
     this.unboundTempFiles.add(file.accessHandle);
     this.boundTempFiles.delete(file.zName);
-  }
-
-  /**
-   * @param {string} dbName 
-   * @returns {string}
-   */
-  #getJournalNameFromDbName(dbName) {
-    return `${dbName}-journal`;
   }
 
   /**
@@ -886,11 +891,6 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
         // Open the main database OPFS file.
         const accessHandle = await openFile(dbName, { create });
 
-        // Pre-open the persistent journal OPFS file here.
-        const journalHandle = await openFile(
-          this.#getJournalNameFromDbName(dbName),
-          { create: true });
-
         // Open WAL files.
         const waHandles = await Promise.all([0, 1].map(async i => {
           const waName = this.#getWriteAheadNameFromDbName(dbName, i);
@@ -905,7 +905,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
         const writeAhead = new WriteAhead(zName, accessHandle, waHandles);
         await writeAhead.ready();
 
-        file.retryResult = { accessHandle, waHandles, journalHandle, writeAhead };
+        file.retryResult = { accessHandle, waHandles, writeAhead };
       });
     } catch (e) {
       while (onError.length) {
