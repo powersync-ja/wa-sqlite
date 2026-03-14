@@ -664,24 +664,25 @@ class WriteAheadFile {
    */
   readTx() {
     // Read the next complete transaction or return null.
+    /** @type {Transaction} */ const tx = {
+      id: 0, // placeholder
+      pages: new Map(),
+      dbFileSize: 0, // placeholder
+      dbPageSize: 0,
+      waSalt1: this.activeHeader.salt1,
+      waOffsetEnd: 0 // placeholder
+    };
+
+    // The property this.activeOffset is only advanced on a successful
+    // transition to the other WAL file or on reading a complete
+    // transaction. Use a local variable to track our progress.
     let offset = this.activeOffset;
-    /** @type {Transaction?} */ let tx = null;
     while (true) {
       const frame = this.#readFrame(offset);
       if (!frame) return null;
 
       if (frame.frameType === WriteAheadFile.FRAME_TYPE_PAGE) {
-        if (!tx) {
-          tx = {
-            id: 0, // placeholder
-            pages: new Map(),
-            dbFileSize: 0, // placeholder
-            dbPageSize: frame.pageData.byteLength,
-            waSalt1: this.activeHeader.salt1,
-            waOffsetEnd: 0 // placeholder
-          };
-        }
-
+        tx.dbPageSize = frame.pageData.byteLength;
         tx.pages.set(
           frame.pageOffset,
           {
@@ -697,6 +698,7 @@ class WriteAheadFile {
         // Finalize the transaction fields and return it.
         tx.id = this.txId;
         tx.dbFileSize = frame.dbFileSize;
+        tx.dbPageSize = tx.pages.values().next().value?.pageSize ?? 0;
         tx.waOffsetEnd = this.activeOffset;
         return tx;
       } else if (frame.frameType === WriteAheadFile.FRAME_TYPE_END) {
