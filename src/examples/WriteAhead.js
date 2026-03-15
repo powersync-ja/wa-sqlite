@@ -180,8 +180,9 @@ export class WriteAhead {
   /**
    * @param {number} offset 
    * @param {Uint8Array} data 
+   * @param {{dstPageSize: number?}} options
    */
-  write(offset, data) {
+  write(offset, data, options) {
     if (this.#isolationState !== 'write') {
       throw new Error('Not in write isolated state');
     }
