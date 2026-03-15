@@ -26,6 +26,8 @@ const finalizationRegistry = new FinalizationRegistry((/** @type {() => void} */
  * @property {'none'|'read'|'write'|'readwrite'} [useLazyLock]
  * @property {number} [timeout]
  * @property {0|1|2|3} [synchronous]
+ * @property {number?} [pageSize]
+ * @property {boolean} [overwrite]
  * 
  * @property {WriteAhead} [writeAhead]
  */
@@ -159,6 +161,8 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
         file.timeout = -1;
         file.synchronous = 1; // NORMAL
         file.writeHint = null;
+        file.pageSize = null;
+        file.overwrite = false;
       } else if (flags & (VFS.SQLITE_OPEN_WAL | VFS.SQLITE_OPEN_SUPER_JOURNAL)) {
         throw new Error('WAL and super-journal files are not supported');
       } else {
@@ -300,7 +304,10 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
       const file = this.mapIdToFile.get(fileId);
       if (file.flags & VFS.SQLITE_OPEN_MAIN_DB) {
         // Write to the write-ahead overlay.
-        file.writeAhead.write(iOffset, pData);
+        const isPageResize = file.overwrite && file.pageSize !== pData.byteLength;
+        file.writeAhead.write(iOffset, pData, {
+          dstPageSize: isPageResize ? file.pageSize : null
+        });
         return VFS.SQLITE_OK;
       }
 
@@ -587,6 +594,16 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
                   break;
               }
               break;
+            case 'page_size':
+              if (value !== null) {
+                // Valid page sizes are 1 (which maps to 65536) or powers of
+                // two from 512 to 32768.
+                const n = parseInt(value);
+                if (n === 1 || (n >= 512 && n <= 32768 && (n & (n - 1)) === 0)) {
+                  file.pageSize = n === 1 ? 65536 : n;
+                }
+              }
+              break;
             case 'synchronous':
               // Track SQLite synchronous mode. Write-ahead transactions
               // trade durability for performance on values 1 (NORMAL) or
@@ -701,6 +718,10 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
           if (file.flags & VFS.SQLITE_OPEN_MAIN_DB) {
             file.writeAhead.commit();
           }
+          break;
+
+        case VFS.SQLITE_FCNTL_OVERWRITE:
+          file.overwrite = true;
           break;
       }
     } catch (e) {
