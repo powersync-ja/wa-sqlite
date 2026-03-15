@@ -16,7 +16,7 @@ const DEFAULT_BACKSTOP_INTERVAL = 30_000;
  * @property {number} id
  * @property {Map<number, PageEntry>} pages address to page data mapping
  * @property {number} dbFileSize
- * @property {number} dbPageSize
+ * @property {number} [dbPageSize]
  * @property {number} waSalt1 WAL2 file identifier
  * @property {number} waOffsetEnd
  */
@@ -669,7 +669,6 @@ class WriteAheadFile {
       id: 0, // placeholder
       pages: new Map(),
       dbFileSize: 0, // placeholder
-      dbPageSize: 0,
       waSalt1: this.activeHeader.salt1,
       waOffsetEnd: 0 // placeholder
     };
@@ -683,7 +682,6 @@ class WriteAheadFile {
       if (!frame) return null;
 
       if (frame.frameType === WriteAheadFile.FRAME_TYPE_PAGE) {
-        tx.dbPageSize = frame.pageData.byteLength;
         tx.pages.set(
           frame.pageOffset,
           {
@@ -699,7 +697,6 @@ class WriteAheadFile {
         // Finalize the transaction fields and return it.
         tx.id = this.txId;
         tx.dbFileSize = frame.dbFileSize;
-        tx.dbPageSize = tx.pages.values().next().value?.pageSize ?? 0;
         tx.waOffsetEnd = this.activeOffset;
         return tx;
       } else if (frame.frameType === WriteAheadFile.FRAME_TYPE_END) {
@@ -742,7 +739,6 @@ class WriteAheadFile {
       id: this.txId + 1,
       pages: new Map(),
       dbFileSize: 0,
-      dbPageSize: 0,
       waSalt1: this.activeHeader.salt1,
       waOffsetEnd: this.activeOffset
     };
@@ -788,7 +784,6 @@ class WriteAheadFile {
       const dataView = new DataView(pageData.buffer, pageData.byteOffset, pageData.byteLength);
       const pageCount = dataView.getUint32(28);
       this.txInProgress.dbFileSize = pageCount * pageData.byteLength;
-      this.txInProgress.dbPageSize = pageData.byteLength;
 
       // Cache page 1 as a performance optimization and to exercise the
       // cache code path.
