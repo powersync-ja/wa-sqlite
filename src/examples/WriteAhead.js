@@ -16,7 +16,7 @@ const DEFAULT_BACKSTOP_INTERVAL = 30_000;
  * @property {number} id
  * @property {Map<number, PageEntry>} pages address to page data mapping
  * @property {number} dbFileSize
- * @property {number} [dbPageSize]
+ * @property {number} [newPageSize]
  * @property {number} waSalt1 WAL2 file identifier
  * @property {number} waOffsetEnd
  */
@@ -142,11 +142,6 @@ export class WriteAhead {
     if (this.#isolationState === 'write') {
       // Resume backstop after write isolation.
       this.#backstop();
-
-      // We need a place for a connection that only does write transactions
-      // to auto-checkpoint. This the best place because writing is
-      // complete.
-      this.#autoCheckpoint();
     } else {
       // Catch up on new transactions that arrived while isolated.
       this.#advanceTxId({ autoCheckpoint: true });
@@ -199,9 +194,44 @@ export class WriteAhead {
       }
 
       this.#txActive = this.#waFile.beginTx();
+      if (options.dstPageSize !== data.byteLength) {
+        // This is a VACUUM to a new page size. The incoming writes are at
+        // the old page size, but we want to write to the WAL with the new
+        // size.
+        this.#txActive.newPageSize = options.dstPageSize;
+      }
     }
-    const waOffset = this.#waFile.writePage(offset, data.slice());
-    this.log?.(`%cwrite page at ${offset} to WAL ${this.#waFile.activeHeader.salt1 & 1}:${waOffset}`, 'background-color: lightskyblue;');
+
+    if (this.#txActive.newPageSize) {
+      // The incoming data is not a single page because the page size
+      // is changing. The two cases are when the new page size is
+      // smaller or larger than the old page size.
+      const frameSize = WriteAheadFile.FRAME_HEADER_SIZE + this.#txActive.newPageSize;
+      if (data.byteLength > this.#txActive.newPageSize) {
+        // New page size is smaller. Write multiple pages of the new
+        // page size.
+        for (let i = 0; i < data.byteLength; i += this.#txActive.newPageSize) {
+          const pageData = data.slice(i, i + this.#txActive.newPageSize);
+          const waOffset = this.#waFile.writePage(offset + i, pageData);
+          this.log?.(`%cwrite page at ${offset + i} to WAL ${this.#waFile.activeHeader.salt1 & 1}:${waOffset}`, 'background-color: lightskyblue;');
+        }
+      } else {
+        // New page size is larger. Save the page data to the WAL file
+        // so it can be read back and rewritten as frames with the new
+        // page size.
+        const pageOffset = offset % this.#txActive.newPageSize;
+        const waOffset = this.#waFile.activeOffset +
+          (offset - pageOffset) / this.#txActive.newPageSize * frameSize +
+          WriteAheadFile.FRAME_HEADER_SIZE +
+          pageOffset;
+        this.#waFile.activeHandle.write(data.subarray(), { at: waOffset });
+        this.log?.(`%cwrite page at ${offset} to WAL ${this.#waFile.activeHeader.salt1 & 1}:${waOffset}`, 'background-color: lightskyblue;');
+      }
+    } else {
+      // This is the normal case without a page size change.
+      const waOffset = this.#waFile.writePage(offset, data.slice());
+      this.log?.(`%cwrite page at ${offset} to WAL ${this.#waFile.activeHeader.salt1 & 1}:${waOffset}`, 'background-color: lightskyblue;');
+    }
   }
 
   /**
@@ -224,6 +254,31 @@ export class WriteAhead {
   }
 
   commit() {
+    if (this.#txActive.newPageSize && this.#txActive.pages.size === 0) {
+      // This transaction is a VACUUM with a page size increase. All
+      // the database pages have been written to the WAL file at their
+      // new size with blank frame headers. Read the page data back
+      // from the WAL file and rewrite as frames.
+      let pageCount = 1; // to be replaced on the first iteration
+      for (let i = 0; i < pageCount; i++) {
+        // Read the page data.
+        const pageData = new Uint8Array(this.#txActive.newPageSize);
+        const waOffset = this.#waFile.activeOffset +
+          i * (WriteAheadFile.FRAME_HEADER_SIZE + this.#txActive.newPageSize) +
+          WriteAheadFile.FRAME_HEADER_SIZE;
+        this.#waFile.activeHandle.read(pageData, { at: waOffset });
+
+        if (i === 0) {
+          // Get the actual page count from the file header.
+          const headerView = new DataView(pageData.buffer);
+          pageCount = headerView.getUint32(28);
+        }
+
+        // Write back as a frame.
+        this.#waFile.writePage(i * this.#txActive.newPageSize, pageData);
+      }
+    }
+
     // Persist the final pending transaction page with the database size.
     this.#waFile.commitTx();
 
@@ -235,6 +290,8 @@ export class WriteAhead {
     const payload = { type: 'tx', tx: this.#txActive };
     this.#broadcastChannel.postMessage(payload);
     this.#txActive = null;
+
+    this.#autoCheckpoint();
   }
 
   rollback() {
@@ -322,6 +379,15 @@ export class WriteAhead {
             writtenOffsets.add(offset);
             this.log?.(`%ccheckpoint wrote txId ${tx.id} page at ${offset} to database`, 'background-color: lightgreen;');
           }
+        }
+
+        if (tx.newPageSize) {
+          // This transaction used a new page size to overwrite the entire
+          // database file so no older pages need to be written. This is
+          // not just an optimization; it prevents incorrectly writing
+          // older smaller pages at addresses that aren't multiples of
+          // the new page size.
+          break;
         }
       }
 
@@ -697,6 +763,7 @@ class WriteAheadFile {
         // Finalize the transaction fields and return it.
         tx.id = this.txId;
         tx.dbFileSize = frame.dbFileSize;
+        tx.newPageSize = (frame.flags & 1) ? tx.pages.get(0).pageSize : null;
         tx.waOffsetEnd = this.activeOffset;
         return tx;
       } else if (frame.frameType === WriteAheadFile.FRAME_TYPE_END) {
@@ -804,6 +871,7 @@ class WriteAheadFile {
     // body - to the WAL file.
     const headerView = new DataView(new ArrayBuffer(WriteAheadFile.FRAME_HEADER_SIZE));
     headerView.setUint8(0, WriteAheadFile.FRAME_TYPE_COMMIT);
+    headerView.setUint8(1, this.txInProgress.newPageSize ? 1 : 0);
     headerView.setBigUint64(8, BigInt(this.txInProgress.dbFileSize));
     headerView.setUint32(16, this.activeHeader.salt1);
     headerView.setUint32(20, this.activeHeader.salt2);
@@ -985,6 +1053,7 @@ class WriteAheadFile {
       return {
         frameType,
         byteLength: WriteAheadFile.FRAME_HEADER_SIZE,
+        flags: headerView.getUint8(1),
         dbFileSize: Number(headerView.getBigUint64(8))
       };
     } else if (frameType === WriteAheadFile.FRAME_TYPE_END) {
