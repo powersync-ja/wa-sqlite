@@ -54,7 +54,9 @@ export class WriteAhead {
   #mapIdToTxPageCount = 0;
 
   /** @type {BroadcastChannel} */ #broadcastChannel;
+
   /** @type {number} */ #backstopTimer;
+  /** @type {number} */ #backstopTimestamp = 0;
 
   /**
    * @param {string} zName 
@@ -88,6 +90,7 @@ export class WriteAhead {
       // Schedule backstop. The backstop is a guard against a crash in
       // another context between persisting a transaction and broadcasting
       // it.
+      this.#backstopTimestamp = performance.now();
       this.#backstop();
     })();
   }
@@ -118,6 +121,10 @@ export class WriteAhead {
       throw new Error('Already in isolated state');
     }
     this.#isolationState = 'read';
+
+    // Disable backstop during isolation.
+    clearTimeout(this.#backstopTimer);
+    this.#backstopTimer = null;
   }
 
   /**
@@ -130,7 +137,7 @@ export class WriteAhead {
     }
     this.#isolationState = 'write';
 
-    // Backstop is not needed while writing because we will be current.
+    // Disable backstop during isolation.
     clearTimeout(this.#backstopTimer);
     this.#backstopTimer = null;
 
@@ -139,14 +146,14 @@ export class WriteAhead {
   }
 
   rejoin() {
-    if (this.#isolationState === 'write') {
-      // Resume backstop after write isolation.
-      this.#backstop();
-    } else {
+    if (this.#isolationState === 'read') {
       // Catch up on new transactions that arrived while isolated.
       this.#advanceTxId({ autoCheckpoint: true });
     }
     this.#isolationState = null;
+
+    // Resume backstop after isolation.
+    this.#backstop();
   }
 
   /**
@@ -292,6 +299,7 @@ export class WriteAhead {
     this.#txActive = null;
 
     this.#autoCheckpoint();
+    this.#backstopTimestamp = performance.now();
   }
 
   rollback() {
@@ -425,6 +433,13 @@ export class WriteAhead {
     return this.#mapIdToTxPageCount;
   }
 
+  setBackstopInterval(intervalMillis) {
+    this.options.backstopInterval = intervalMillis;
+    if (intervalMillis > 0 && this.#isolationState) {
+      this.#backstop();
+    }
+  }
+
   /**
    * Incorporate a transaction into our view of the database.
    * @param {Transaction} tx 
@@ -487,6 +502,15 @@ export class WriteAhead {
         this.#autoCheckpoint();
       }
     }
+
+    if (options.readToCurrent || didAdvance) {
+      // The WAL has been accessed, so reset the backstop.
+      // Calling #backstop() here is not necessary because if we are
+      // in an isolated state then rejoin() will schedule the next call,
+      // and if we are not in an isolated state then the next call
+      // should already be scheduled.
+      this.#backstopTimestamp = performance.now();
+    }
   }
 
   #autoCheckpoint() {
@@ -547,28 +571,32 @@ export class WriteAhead {
   /**
    * Periodic check for recovering from lost transaction broadcasts.
    */
-  async #backstop() {
-    try {
-      if (this.#backstopTimer) { 
-        if (this.#isolationState === null) {
-          // Not in an isolated state, so advance our view of the database.
-          const oldTxId = this.#waFile.txId;
-          this.#advanceTxId({ readToCurrent: true });
-          if (this.#waFile.txId > oldTxId) {
-            this.log?.(`%cbackstop txId ${oldTxId} -> ${this.#waFile.txId}`, 'background-color: lightyellow;');
-          }
-        } else if (this.#isolationState === 'read') {
-          // TODO: Peek to see if there may be new transactions.
-          // Check txId locks or read the next frame header.
-        }
-      }
-    } catch (e) {
-      console.error('Backstop failed', e);
+  #backstop() {
+    if (this.options.backstopInterval <= 0) {
+      // Backstop is disabled.
+      return;
     }
 
-    // Schedule next backstop. Add a bit of jitter to decorrelate
-    // backstops across multiple connections.
-    const delay = this.options.backstopInterval * (0.9 + 0.2 * Math.random());
+    if (this.#isolationState) {
+      throw new Error('Backstop was invoked in an isolated state');
+    }
+
+    const now = performance.now();
+    if (now >= this.#backstopTimestamp + this.options.backstopInterval) {
+      // The time since the last WAL access (read, write, or skip) has
+      // exceeded the backstop interval. Check for transactions in the
+      // write-ahead log that have not arrived via message.
+      const oldTxId = this.#waFile.txId;
+      this.#advanceTxId({ readToCurrent: true });
+      if (this.#waFile.txId > oldTxId) {
+        this.log?.(`%cbackstop txId ${oldTxId} -> ${this.#waFile.txId}`, 'background-color: lightyellow;');
+      }
+      this.#backstopTimestamp = performance.now();
+    }
+
+    // Schedule next backstop.
+    const delay = this.#backstopTimestamp + this.options.backstopInterval - performance.now();
+    clearTimeout(this.#backstopTimer);
     this.#backstopTimer = self.setTimeout(() => {
       this.#backstop();
     }, delay);

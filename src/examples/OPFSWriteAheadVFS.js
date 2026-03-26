@@ -554,7 +554,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
             case 'backstop_interval':
               if (value !== null) {
                 const millis = parseInt(value);
-                file.writeAhead.options.backstopInterval = millis;
+                file.writeAhead.setBackstopInterval(millis);
               } else {
                 // Return current interval.
                 const s = file.writeAhead.options.backstopInterval.toString();
