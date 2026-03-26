@@ -433,6 +433,10 @@ export class WriteAhead {
     return this.#mapIdToTxPageCount;
   }
 
+  isTransactionPending() {
+    return !!this.#txActive;
+  }
+
   setBackstopInterval(intervalMillis) {
     this.options.backstopInterval = intervalMillis;
     if (intervalMillis > 0 && this.#isolationState) {

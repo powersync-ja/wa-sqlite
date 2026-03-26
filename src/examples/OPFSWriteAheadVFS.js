@@ -654,11 +654,8 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
                 case 'full':
                 case 'restart':
                 case 'truncate':
-                  // TODO: Fix this to test for an active transaction instead
-                  // of the lock state. Currently this doesn't work in
-                  // exclusive locking mode and it should.
-                  if (file.lockState !== VFS.SQLITE_LOCK_NONE) {
-                    throw new Error('invalid while database is locked');
+                  if (file.writeAhead.isTransactionPending()) {
+                    throw new Error('invalid while a transaction is in progress');
                   }
                   this._module.pendingOps.push(this.#pendingCheckpoint(file, checkpointMode));
                   break;
