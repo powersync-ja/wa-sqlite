@@ -85,22 +85,9 @@ export class WriteAhead {
     this.#waHandles = waHandles;
     this.options = Object.assign(this.options, options);
 
-    // Read file headers from both header slots and use the one with the
-    // lower nextTxId. If neither header is valid, create a new header.
-    const fileHeader = this.#waHandles
-      .map(handle => this.#readFileHeader(handle))
-      .filter(h => h)
-      .sort((a, b) => a.nextTxId - b.nextTxId)[0]
-      ?? this.#writeFileHeader(Math.floor(Math.random() * 0xffffffff));
-
-    this.#activeHeader = fileHeader;
-    this.#activeHandle = this.#waHandles[fileHeader.salt1 & 1];
-    this.#activeOffset = FILE_HEADER_SIZE;
-    this.#txId = fileHeader.nextTxId - 1;
-
     // All the asynchronous initialization is done here.
     this.#ready = (async () => {
-      // Disable checkpointing by other connections until we're ready.
+      // Set our advertised txId to zero until we know the proper value.
       await this.#updateTxIdLock();
 
       // Listen for transactions and checkpoints from other connections.
@@ -109,7 +96,20 @@ export class WriteAhead {
         this.#handleMessage(event);
       };
 
-      // Load all the transactions from the WAL file.
+      // Read headers from both WAL files and use the one with the
+      // lower nextTxId. If neither header is valid, create a new header.
+      const fileHeader = this.#waHandles
+        .map(handle => this.#readFileHeader(handle))
+        .filter(h => h)
+        .sort((a, b) => a.nextTxId - b.nextTxId)[0]
+        ?? this.#writeFileHeader(Math.floor(Math.random() * 0xffffffff));
+
+      this.#activeHeader = fileHeader;
+      this.#activeHandle = this.#waHandles[fileHeader.salt1 & 1];
+      this.#activeOffset = FILE_HEADER_SIZE;
+      this.#txId = fileHeader.nextTxId - 1;
+
+      // Load all the transactions from the WAL.
       for (const tx of this.#readAllTx()) {
         this.#activateTx(tx);
       }
@@ -287,7 +287,7 @@ export class WriteAhead {
   getFileSize() {
     // If the overlay is empty, the last file size may no longer be valid
     // if direct changes were made to the main database file.
-    return this.#waOverlay.size ? this.#dbFileSize : null;
+    return this.#waOverlay.size ? this.#dbFileSize : this.#dbHandle.getSize();
   }
 
   commit() {
