@@ -963,8 +963,22 @@ export class WriteAhead {
   }
 
   #isInactiveFileEmpty() {
-    const accessHandle = this.#getInactiveHandle();
-    return accessHandle.getSize() === 0;
+    if (this.#mapIdToTx.has(this.#activeHeader.nextTxId - 1)) {
+      // At least one transaction on the inactive file has not been
+      // checkpointed.
+      return false;
+    }
+
+    const inactiveHandle = this.#getInactiveHandle();
+    if (inactiveHandle.getSize() < FILE_HEADER_SIZE) {
+      // The inactive file is smaller than the minimum size for a valid
+      // WAL file.
+      return true;
+    }
+
+    // This test is sufficient by itself but the previous tests are
+    // less expensive.
+    return this.#readFileHeader(inactiveHandle) === null;
   }
 
   #truncateInactiveFile() {
@@ -1083,14 +1097,8 @@ export class WriteAhead {
       // If the file header is corrupt, the end frame effectively does
       // not exist.
       //
-      // How do we recover from this? Readers and writers will continue
-      // normally. If the inactive file is empty then a writer will
-      // overwrite the end frame (either with a transaction or a
-      // new end frame with a file header) and that will restore a
-      // valid state.
-      //
-      // If the inactive file is not empty, then it should be truncated
-      // on the next checkpoint and that will restore a valid state.
+      // A corrupt file header should be repaired by the next writer
+      // that attempts to swap WAL files.
       const fileHeader = this.#readFileHeader(this.#getInactiveHandle());
       if (fileHeader?.salt1 !== ((this.#activeHeader.salt1 + 1) >>> 0)) return null;
 
