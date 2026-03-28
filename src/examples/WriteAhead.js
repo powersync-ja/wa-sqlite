@@ -60,12 +60,11 @@ export class WriteAhead {
   /** @type {'read'|'write'} */ #isolationState = null;
 
   /** @type {Lock} */ #txIdLock = null;
-  /** @type {Transaction} */ #txActive = null;
 
   /** @type {Map<number, PageEntry>} */ #waOverlay = new Map();
   /** @type {Map<number, Transaction>} */ #mapIdToTx = new Map();
-  /** @type {Map<number, Transaction>} */ #pendingTx = new Map();
-  #mapIdToTxPageCount = 0;
+  /** @type {Map<number, Transaction>} */ #mapIdToPendingTx = new Map();
+  #approxPageCount = 0;
 
   /** @type {BroadcastChannel} */ #broadcastChannel;
 
@@ -195,7 +194,7 @@ export class WriteAhead {
     // First look for the page in any write transaction in progress.
     // If the page is not found in the transaction overlay, look in the
     // write-ahead overlay.
-    const pageEntry = this.#txActive?.pages.get(offset) ?? this.#waOverlay.get(offset);
+    const pageEntry = this.#txInProgress?.pages.get(offset) ?? this.#waOverlay.get(offset);
     if (pageEntry) {
       if (pageEntry.pageData) {
         // Page data is cached.
@@ -220,36 +219,36 @@ export class WriteAhead {
       throw new Error('Not in write isolated state');
     }
 
-    if (!this.#txActive) {
+    if (!this.#txInProgress) {
       // There is no active transaction so we need to create one. But
       // first check whether to swap WAL files.
       const nPageThreshold = this.options.journalSizeLimit >= 0 ?
         this.options.journalSizeLimit :
         DEFAULT_JOURNAL_SIZE_LIMIT;
-      if (this.#mapIdToTxPageCount >= nPageThreshold && this.#isInactiveFileEmpty()) {
-        this.log?.(`%cchange WAL file at ${this.#mapIdToTxPageCount} pages`, 'background-color: lightskyblue;');
+      if (this.#approxPageCount >= nPageThreshold && this.#isInactiveFileEmpty()) {
+        this.log?.(`%cchange WAL file at ${this.#approxPageCount} pages`, 'background-color: lightskyblue;');
         this.#swapActiveFile();
       }
 
-      this.#txActive = this.#beginTx();
+      this.#beginTx();
       if (options.dstPageSize !== data.byteLength) {
         // This is a VACUUM to a new page size. The incoming writes are at
         // the old page size, but we want to write to the WAL with the new
         // size.
-        this.#txActive.newPageSize = options.dstPageSize;
+        this.#txInProgress.newPageSize = options.dstPageSize;
       }
     }
 
-    if (this.#txActive.newPageSize) {
+    if (this.#txInProgress.newPageSize) {
       // The incoming data is not a single page because the page size
       // is changing. The two cases are when the new page size is
       // smaller or larger than the old page size.
-      const frameSize = FRAME_HEADER_SIZE + this.#txActive.newPageSize;
-      if (data.byteLength > this.#txActive.newPageSize) {
+      const frameSize = FRAME_HEADER_SIZE + this.#txInProgress.newPageSize;
+      if (data.byteLength > this.#txInProgress.newPageSize) {
         // New page size is smaller. Write multiple pages of the new
         // page size.
-        for (let i = 0; i < data.byteLength; i += this.#txActive.newPageSize) {
-          const pageData = data.slice(i, i + this.#txActive.newPageSize);
+        for (let i = 0; i < data.byteLength; i += this.#txInProgress.newPageSize) {
+          const pageData = data.slice(i, i + this.#txInProgress.newPageSize);
           const waOffset = this.#writePage(offset + i, pageData);
           this.log?.(`%cwrite page at ${offset + i} to WAL ${this.#activeHeader.salt1 & 1}:${waOffset}`, 'background-color: lightskyblue;');
         }
@@ -257,9 +256,9 @@ export class WriteAhead {
         // New page size is larger. Save the page data to the WAL file
         // so it can be read back and rewritten as frames with the new
         // page size.
-        const pageOffset = offset % this.#txActive.newPageSize;
+        const pageOffset = offset % this.#txInProgress.newPageSize;
         const waOffset = this.#activeOffset +
-          (offset - pageOffset) / this.#txActive.newPageSize * frameSize +
+          (offset - pageOffset) / this.#txInProgress.newPageSize * frameSize +
           FRAME_HEADER_SIZE +
           pageOffset;
         this.#activeHandle.write(data.subarray(), { at: waOffset });
@@ -278,9 +277,9 @@ export class WriteAhead {
   truncate(newSize) {
     // Remove any pages past the truncation point. We don't need to save
     // the file size because that will be extracted from page 1.
-    for (const offset of this.#txActive.pages.keys()) {
+    for (const offset of this.#txInProgress.pages.keys()) {
       if (offset >= newSize) {
-        this.#txActive.pages.delete(offset);
+        this.#txInProgress.pages.delete(offset);
       }
     }
   }
@@ -292,7 +291,8 @@ export class WriteAhead {
   }
 
   commit() {
-    if (this.#txActive.newPageSize && this.#txActive.pages.size === 0) {
+    const tx = this.#txInProgress;
+    if (tx.newPageSize && tx.pages.size === 0) {
       // This transaction is a VACUUM with a page size increase. All
       // the database pages have been written to the WAL file at their
       // new size with blank frame headers. Read the page data back
@@ -300,9 +300,9 @@ export class WriteAhead {
       let pageCount = 1; // to be replaced on the first iteration
       for (let i = 0; i < pageCount; i++) {
         // Read the page data.
-        const pageData = new Uint8Array(this.#txActive.newPageSize);
+        const pageData = new Uint8Array(tx.newPageSize);
         const waOffset = this.#activeOffset +
-          i * (FRAME_HEADER_SIZE + this.#txActive.newPageSize) +
+          i * (FRAME_HEADER_SIZE + tx.newPageSize) +
           FRAME_HEADER_SIZE;
         this.#activeHandle.read(pageData, { at: waOffset });
 
@@ -313,7 +313,7 @@ export class WriteAhead {
         }
 
         // Write back as a frame.
-        this.#writePage(i * this.#txActive.newPageSize, pageData);
+        this.#writePage(i * tx.newPageSize, pageData);
       }
     }
 
@@ -321,13 +321,12 @@ export class WriteAhead {
     this.#commitTx();
 
     // Incorporate the transaction locally.
-    this.#activateTx(this.#txActive);
+    this.#activateTx(tx);
     this.#updateTxIdLock();
 
     // Send the transaction to other connections.
-    const payload = { type: 'tx', tx: this.#txActive };
+    const payload = { type: 'tx', tx };
     this.#broadcastChannel.postMessage(payload);
-    this.#txActive = null;
 
     this.#autoCheckpoint();
     this.#backstopTimestamp = performance.now();
@@ -336,7 +335,6 @@ export class WriteAhead {
   rollback() {
     // Discard transaction pages.
     this.#abortTx();
-    this.#txActive = null;
   }
 
   /**
@@ -462,11 +460,11 @@ export class WriteAhead {
    * @returns {number}
    */
   getWriteAheadSize() {
-    return this.#mapIdToTxPageCount;
+    return this.#approxPageCount;
   }
 
   isTransactionPending() {
-    return !!this.#txActive;
+    return !!this.#txInProgress;
   }
 
   setBackstopInterval(intervalMillis) {
@@ -483,7 +481,7 @@ export class WriteAhead {
   #activateTx(tx) {
     // Transfer to the active collection of transactions.
     this.#mapIdToTx.set(tx.id, tx);
-    this.#mapIdToTxPageCount += tx.pages.size;
+    this.#approxPageCount += tx.pages.size;
 
     // Add transaction pages to the write-ahead overlay.
     for (const [offset, pageEntry] of tx.pages) {
@@ -501,15 +499,15 @@ export class WriteAhead {
    */
   #advanceTxId(options = {}) {
     let didAdvance = false;
-    while (this.#pendingTx.size) {
+    while (this.#mapIdToPendingTx.size) {
       // Fetch the next transaction in sequence. Usually this will come
       // from pendingTx, but if it is missing then read it from the file.
       const nextTxId = this.#txId + 1;
       let tx;
-      if (this.#pendingTx.has(nextTxId)) {
+      if (this.#mapIdToPendingTx.has(nextTxId)) {
         // This transaction arrived via message.
-        tx = this.#pendingTx.get(nextTxId);
-        this.#pendingTx.delete(tx.id);
+        tx = this.#mapIdToPendingTx.get(nextTxId);
+        this.#mapIdToPendingTx.delete(tx.id);
 
         // Move the WAL file offset past this transaction.
         this.#skipTx(tx);
@@ -577,7 +575,7 @@ export class WriteAhead {
 
       // Remove transaction.
       this.#mapIdToTx.delete(tx.id);
-      this.#mapIdToTxPageCount -= tx.pages.size;
+      this.#approxPageCount -= tx.pages.size;
     }
     this.#updateTxIdLock();
   }
@@ -591,7 +589,7 @@ export class WriteAhead {
       // already have it.
       /** @type {Transaction} */ const tx = event.data.tx;
       if (tx.id > this.#txId) {
-        this.#pendingTx.set(tx.id, tx);
+        this.#mapIdToPendingTx.set(tx.id, tx);
         if (this.#isolationState === null) {
           // Not in an isolated state, so advance our view of the database.
           this.#advanceTxId({ autoCheckpoint: true });
