@@ -3,6 +3,13 @@ import { Lock } from './Lock.js';
 const DEFAULT_JOURNAL_SIZE_LIMIT = 1000;
 const DEFAULT_BACKSTOP_INTERVAL = 30_000;
 
+const MAGIC = 0x377f0684;
+const FILE_HEADER_SIZE = 32;
+const FRAME_HEADER_SIZE = 32;
+const FRAME_TYPE_PAGE = 0;
+const FRAME_TYPE_COMMIT = 1;
+const FRAME_TYPE_END = 2;
+
 /**
  * @typedef PageEntry
  * @property {number} waOffset location in WAL file
@@ -29,12 +36,6 @@ const DEFAULT_BACKSTOP_INTERVAL = 30_000;
  */
 
 export class WriteAhead {
-  static MAGIC = 0x377f0684;
-  static FILE_HEADER_SIZE = 32;
-  static FRAME_HEADER_SIZE = 32;
-  static FRAME_TYPE_PAGE = 0;
-  static FRAME_TYPE_COMMIT = 1;
-  static FRAME_TYPE_END = 2;
 
   log = null;
   /** @type {WriteAheadOptions} */ options = {
@@ -95,7 +96,7 @@ export class WriteAhead {
 
     this.#activeHeader = fileHeader;
     this.#activeHandle = this.#waHandles[fileHeader.salt1 & 1];
-    this.#activeOffset = WriteAhead.FILE_HEADER_SIZE;
+    this.#activeOffset = FILE_HEADER_SIZE;
     this.#txId = fileHeader.nextTxId - 1;
 
     // All the asynchronous initialization is done here.
@@ -243,7 +244,7 @@ export class WriteAhead {
       // The incoming data is not a single page because the page size
       // is changing. The two cases are when the new page size is
       // smaller or larger than the old page size.
-      const frameSize = WriteAhead.FRAME_HEADER_SIZE + this.#txActive.newPageSize;
+      const frameSize = FRAME_HEADER_SIZE + this.#txActive.newPageSize;
       if (data.byteLength > this.#txActive.newPageSize) {
         // New page size is smaller. Write multiple pages of the new
         // page size.
@@ -259,7 +260,7 @@ export class WriteAhead {
         const pageOffset = offset % this.#txActive.newPageSize;
         const waOffset = this.#activeOffset +
           (offset - pageOffset) / this.#txActive.newPageSize * frameSize +
-          WriteAhead.FRAME_HEADER_SIZE +
+          FRAME_HEADER_SIZE +
           pageOffset;
         this.#activeHandle.write(data.subarray(), { at: waOffset });
         this.log?.(`%cwrite page at ${offset} to WAL ${this.#activeHeader.salt1 & 1}:${waOffset}`, 'background-color: lightskyblue;');
@@ -301,8 +302,8 @@ export class WriteAhead {
         // Read the page data.
         const pageData = new Uint8Array(this.#txActive.newPageSize);
         const waOffset = this.#activeOffset +
-          i * (WriteAhead.FRAME_HEADER_SIZE + this.#txActive.newPageSize) +
-          WriteAhead.FRAME_HEADER_SIZE;
+          i * (FRAME_HEADER_SIZE + this.#txActive.newPageSize) +
+          FRAME_HEADER_SIZE;
         this.#activeHandle.read(pageData, { at: waOffset });
 
         if (i === 0) {
@@ -771,16 +772,16 @@ export class WriteAhead {
       const frame = this.#readFrame(offset);
       if (!frame) return null;
 
-      if (frame.frameType === WriteAhead.FRAME_TYPE_PAGE) {
+      if (frame.frameType === FRAME_TYPE_PAGE) {
         tx.pages.set(
           frame.pageOffset,
           {
             pageSize: frame.pageData.byteLength,
-            waOffset: offset + WriteAhead.FRAME_HEADER_SIZE,
+            waOffset: offset + FRAME_HEADER_SIZE,
             waSalt1: tx.waSalt1,
           }
         );
-      } else if (frame.frameType === WriteAhead.FRAME_TYPE_COMMIT) {
+      } else if (frame.frameType === FRAME_TYPE_COMMIT) {
         // The transaction is complete. Update the instance state.
         this.#txId += 1;
         this.#activeOffset = offset + frame.byteLength;
@@ -791,7 +792,7 @@ export class WriteAhead {
         tx.newPageSize = (frame.flags & 1) ? tx.pages.get(0).pageSize : null;
         tx.waOffsetEnd = this.#activeOffset;
         return tx;
-      } else if (frame.frameType === WriteAhead.FRAME_TYPE_END) {
+      } else if (frame.frameType === FRAME_TYPE_END) {
         // No more transactions on the current WAL file. Switch to the
         // other file.
         this.#followFileChange(frame.fileHeader);
@@ -843,15 +844,15 @@ export class WriteAhead {
    * @param {Uint8Array} pageData
    */
   #writePage(pageOffset, pageData) {
-    const headerView = new DataView(new ArrayBuffer(WriteAhead.FRAME_HEADER_SIZE));
-    headerView.setUint8(0, WriteAhead.FRAME_TYPE_PAGE);
+    const headerView = new DataView(new ArrayBuffer(FRAME_HEADER_SIZE));
+    headerView.setUint8(0, FRAME_TYPE_PAGE);
     headerView.setUint16(2, pageData.byteLength === 65536 ? 1 : pageData.byteLength);
     headerView.setBigUint64(8, BigInt(pageOffset));
     headerView.setUint32(16, this.#activeHeader.salt1);
     headerView.setUint32(20, this.#activeHeader.salt2);
 
     const checksum = new Checksum();
-    checksum.update(new Uint8Array(headerView.buffer, 0, WriteAhead.FRAME_HEADER_SIZE - 8));
+    checksum.update(new Uint8Array(headerView.buffer, 0, FRAME_HEADER_SIZE - 8));
     checksum.update(pageData);
     headerView.setUint32(24, checksum.s0);
     headerView.setUint32(28, checksum.s1);
@@ -859,7 +860,7 @@ export class WriteAhead {
     const bytesWritten =
       this.#activeHandle.write(headerView, { at: this.#txInProgress.waOffsetEnd }) +
       this.#activeHandle.write(pageData, {
-        at: this.#txInProgress.waOffsetEnd + WriteAhead.FRAME_HEADER_SIZE,
+        at: this.#txInProgress.waOffsetEnd + FRAME_HEADER_SIZE,
       });
     if (bytesWritten !== headerView.byteLength + pageData.byteLength) {
       throw new Error('write failed');
@@ -867,7 +868,7 @@ export class WriteAhead {
 
     const pageEntry = {
       pageSize: pageData.byteLength,
-      waOffset: this.#txInProgress.waOffsetEnd + WriteAhead.FRAME_HEADER_SIZE,
+      waOffset: this.#txInProgress.waOffsetEnd + FRAME_HEADER_SIZE,
       waSalt1: this.#activeHeader.salt1,
     };
     if (pageOffset === 0) {
@@ -893,15 +894,15 @@ export class WriteAhead {
   #commitTx() {
     // Write a commit frame - which is a special frame header with no
     // body - to the WAL file.
-    const headerView = new DataView(new ArrayBuffer(WriteAhead.FRAME_HEADER_SIZE));
-    headerView.setUint8(0, WriteAhead.FRAME_TYPE_COMMIT);
+    const headerView = new DataView(new ArrayBuffer(FRAME_HEADER_SIZE));
+    headerView.setUint8(0, FRAME_TYPE_COMMIT);
     headerView.setUint8(1, this.#txInProgress.newPageSize ? 1 : 0);
     headerView.setBigUint64(8, BigInt(this.#txInProgress.dbFileSize));
     headerView.setUint32(16, this.#activeHeader.salt1);
     headerView.setUint32(20, this.#activeHeader.salt2);
 
     const checksum = new Checksum();
-    checksum.update(new Uint8Array(headerView.buffer, 0, WriteAhead.FRAME_HEADER_SIZE - 8));
+    checksum.update(new Uint8Array(headerView.buffer, 0, FRAME_HEADER_SIZE - 8));
     headerView.setUint32(24, checksum.s0);
     headerView.setUint32(28, checksum.s1);
 
@@ -929,13 +930,13 @@ export class WriteAhead {
    */
   #swapActiveFile() {
     // Write an end frame to terminate the currently active WAL file.
-    const frameView = new DataView(new ArrayBuffer(WriteAhead.FRAME_HEADER_SIZE));
-    frameView.setUint8(0, WriteAhead.FRAME_TYPE_END);
+    const frameView = new DataView(new ArrayBuffer(FRAME_HEADER_SIZE));
+    frameView.setUint8(0, FRAME_TYPE_END);
     frameView.setUint32(16, this.#activeHeader.salt1);
     frameView.setUint32(20, this.#activeHeader.salt2);
 
     const checksum = new Checksum();
-    checksum.update(new Uint8Array(frameView.buffer, 0, WriteAhead.FRAME_HEADER_SIZE - 8));
+    checksum.update(new Uint8Array(frameView.buffer, 0, FRAME_HEADER_SIZE - 8));
     frameView.setUint32(24, checksum.s0);
     frameView.setUint32(28, checksum.s1);
 
@@ -947,7 +948,7 @@ export class WriteAhead {
     // Initialize the other WAL file and make it active.
     this.#activeHeader = this.#writeFileHeader();
     this.#activeHandle = this.#getInactiveHandle();
-    this.#activeOffset = WriteAhead.FILE_HEADER_SIZE;
+    this.#activeOffset = FILE_HEADER_SIZE;
   }
 
   #getActiveFileStartingTxId() {
@@ -990,7 +991,7 @@ export class WriteAhead {
 
     this.#activeHandle = accessHandle;
     this.#activeHeader = fileHeader;
-    this.#activeOffset = WriteAhead.FILE_HEADER_SIZE;
+    this.#activeOffset = FILE_HEADER_SIZE;
     return fileHeader;
   }
 
@@ -1004,15 +1005,15 @@ export class WriteAhead {
    * @param {FileSystemSyncAccessHandle} accessHandle
    */
   #readFileHeader(accessHandle) {
-    const headerView = new DataView(new ArrayBuffer(WriteAhead.FILE_HEADER_SIZE));
+    const headerView = new DataView(new ArrayBuffer(FILE_HEADER_SIZE));
     if (accessHandle.read(headerView, { at: 0 }) !== headerView.byteLength) {
       return null;
     }
 
-    if (headerView.getUint32(0) !== WriteAhead.MAGIC) return null;
+    if (headerView.getUint32(0) !== MAGIC) return null;
 
     const checksum = new Checksum();
-    checksum.update(new Uint8Array(headerView.buffer, 0, WriteAhead.FILE_HEADER_SIZE - 8));
+    checksum.update(new Uint8Array(headerView.buffer, 0, FILE_HEADER_SIZE - 8));
     if (!checksum.matches(headerView.getUint32(24), headerView.getUint32(28))) {
       return null;
     }
@@ -1028,7 +1029,7 @@ export class WriteAhead {
    * @param {number} offset
    */
   #readFrame(offset) {
-    const headerView = new DataView(new ArrayBuffer(WriteAhead.FRAME_HEADER_SIZE));
+    const headerView = new DataView(new ArrayBuffer(FRAME_HEADER_SIZE));
     if (this.#activeHandle.read(headerView, { at: offset }) !== headerView.byteLength) {
       // EOF, not an error.
       return null;
@@ -1048,13 +1049,13 @@ export class WriteAhead {
       payloadData = new Uint8Array(payloadSize);
       const payloadBytesRead = this.#activeHandle.read(
         payloadData,
-        { at: offset + WriteAhead.FRAME_HEADER_SIZE }
+        { at: offset + FRAME_HEADER_SIZE }
       );
       if (payloadBytesRead !== payloadSize) return null;
     }
 
     const checksum = new Checksum();
-    checksum.update(new Uint8Array(headerView.buffer, 0, WriteAhead.FRAME_HEADER_SIZE - 8));
+    checksum.update(new Uint8Array(headerView.buffer, 0, FRAME_HEADER_SIZE - 8));
     if (payloadData) {
       checksum.update(payloadData);
     }
@@ -1064,21 +1065,21 @@ export class WriteAhead {
     }
 
     const frameType = headerView.getUint8(0);
-    if (frameType === WriteAhead.FRAME_TYPE_PAGE) {
+    if (frameType === FRAME_TYPE_PAGE) {
       return {
         frameType,
-        byteLength: WriteAhead.FRAME_HEADER_SIZE + payloadSize,
+        byteLength: FRAME_HEADER_SIZE + payloadSize,
         pageOffset: Number(headerView.getBigUint64(8)),
         pageData: payloadData,
       };
-    } else if (frameType === WriteAhead.FRAME_TYPE_COMMIT) {
+    } else if (frameType === FRAME_TYPE_COMMIT) {
       return {
         frameType,
-        byteLength: WriteAhead.FRAME_HEADER_SIZE,
+        byteLength: FRAME_HEADER_SIZE,
         flags: headerView.getUint8(1),
         dbFileSize: Number(headerView.getBigUint64(8)),
       };
-    } else if (frameType === WriteAhead.FRAME_TYPE_END) {
+    } else if (frameType === FRAME_TYPE_END) {
       // Handling the end frame and new file header must be atomic, so
       // we validate the new file header before returning the frame.
       // If the file header is corrupt, the end frame effectively does
@@ -1097,7 +1098,7 @@ export class WriteAhead {
 
       return {
         frameType,
-        byteLength: WriteAhead.FRAME_HEADER_SIZE,
+        byteLength: FRAME_HEADER_SIZE,
         fileHeader,
       };
     }
@@ -1109,14 +1110,14 @@ export class WriteAhead {
     const nextTxId = this.#txId + 1;
     const salt1 = (prevSalt1 + 1) >>> 0;
     const salt2 = Math.floor(Math.random() * 0xffffffff) >>> 0;
-    const headerView = new DataView(new ArrayBuffer(WriteAhead.FILE_HEADER_SIZE));
-    headerView.setUint32(0, WriteAhead.MAGIC);
+    const headerView = new DataView(new ArrayBuffer(FILE_HEADER_SIZE));
+    headerView.setUint32(0, MAGIC);
     headerView.setBigUint64(8, BigInt(nextTxId));
     headerView.setUint32(16, salt1);
     headerView.setUint32(20, salt2);
 
     const checksum = new Checksum();
-    checksum.update(new Uint8Array(headerView.buffer, 0, WriteAhead.FILE_HEADER_SIZE - 8));
+    checksum.update(new Uint8Array(headerView.buffer, 0, FILE_HEADER_SIZE - 8));
     headerView.setUint32(24, checksum.s0);
     headerView.setUint32(28, checksum.s1);
 
