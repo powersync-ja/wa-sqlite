@@ -2,7 +2,8 @@
 export class Lock {
   #name;
   /** @type {LockMode?} */ #mode = null;
-  #releaser = null;
+  /** @type {Promise<Function|null>} */ #releaser = Promise.resolve(null);
+  #isAcquiring = false;
 
   /**
    * @param {string} name 
@@ -24,44 +25,45 @@ export class Lock {
    * @return {Promise<boolean>} true if lock acquired, false on failed poll
    */
   async acquire(mode, timeout = -1) {
-    if (this.#releaser) {
-      throw new Error(`Lock ${this.#name} is already acquired`);
-    }
-    return new Promise((resolve, reject) => {
-      /** @type {LockOptions} */
-      const options = { mode, ifAvailable: timeout === 0 };
-      let timeoutId;
-      if (timeout > 0) {
-        const abortController = new AbortController();
-        timeoutId = self.setTimeout(() => {
-          abortController.abort();
-        }, timeout);
-        options.signal = abortController.signal;
+    if (this.#isAcquiring) throw new Error('Lock is already being acquired');
+    this.#isAcquiring = true;
+    try {
+      if (this.#mode) {
+        throw new Error(`Lock ${this.#name} is already acquired`);
       }
 
-      navigator.locks.request(this.#name, options, lock => {
-        if (timeoutId) clearTimeout(timeoutId);
-        if (lock === null) {
-          // Polling (with timeout = 0) did not acquire the lock.
-          return resolve(false);
+      this.#releaser = new Promise((resolve, reject) => {
+        /** @type {LockOptions} */
+        const options = { mode, ifAvailable: timeout === 0 };
+        if (timeout > 0) {
+          options.signal = AbortSignal.timeout(timeout);
         }
 
-        // Lock acquired. The lock is released when this returned
-        // Promise is resolved.
-        this.#mode = mode;
-        return new Promise(releaser => {
-          this.#releaser = releaser;
-          resolve(true);
-        })
-      }).catch(e => {
-        return reject(e);
+        navigator.locks.request(this.#name, options, lock => {
+          if (lock === null) {
+            // Polling (with timeout = 0) did not acquire the lock.
+            return resolve(null);
+          }
+
+          // Lock acquired. The lock is released when this returned
+          // Promise is resolved.
+          this.#mode = mode;
+          return new Promise(releaser => {
+            resolve(releaser);
+          })
+        }).catch(e => {
+          return reject(e);
+        });
       });
-    });
+
+      return this.#releaser.then(releaser => !!releaser)
+    } finally {
+      this.#isAcquiring = false;
+    }
   }
 
   release() {
-    this.#releaser?.();
-    this.#releaser = null;
+    this.#releaser.then(releaser => releaser?.(), () => {});
     this.#mode = null;
   }
 }

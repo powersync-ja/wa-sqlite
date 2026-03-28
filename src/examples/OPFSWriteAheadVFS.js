@@ -144,7 +144,9 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
           this._module.retryOps.push(this.#retryOpen(zName, flags, fileId, pOutFlags));
           return VFS.SQLITE_BUSY;
         } else if (file.retryResult instanceof Error) {
-          throw file.retryResult;
+          const e = file.retryResult;
+          file.retryResult = null;
+          throw e;
         }
 
         // Initialize database file state.
@@ -435,7 +437,9 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
             }
           }
         } else if (file.retryResult instanceof Error) {
-          throw file.retryResult;
+          const e = file.retryResult;
+          file.retryResult = null;
+          throw e;
         }
 
         // We have acquired the needed locks, either synchronously or
@@ -450,8 +454,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
       file.lockState = lockType;
       return VFS.SQLITE_OK;
     } catch (e) {
-      if (e.name === 'AbortError') {
-        // Timeout expired while waiting for the lock.
+      if (e.name === 'TimeoutError') {
         return VFS.SQLITE_BUSY;
       }
 
