@@ -58,6 +58,8 @@ export class WriteAhead {
   /** @type {number} */ #backstopTimer;
   /** @type {number} */ #backstopTimestamp = 0;
 
+  #abortController = new AbortController();
+
   /**
    * @param {string} zName 
    * @param {FileSystemSyncAccessHandle} dbHandle
@@ -103,6 +105,8 @@ export class WriteAhead {
   }
 
   close() {
+    this.#abortController.abort();
+
     // Stop asynchronous maintenance.
     this.#broadcastChannel.onmessage = null;
     clearTimeout(this.#backstopTimer);
@@ -323,11 +327,6 @@ export class WriteAhead {
    * @param {{isPassive: boolean}} options
    */
   async checkpoint(options = { isPassive: true }) {
-    if (this.#waFile.isInactiveFileEmpty() && options.isPassive) {
-      // Checkpoint is unnecessary.
-      return;
-    }
-
     // Passive checkpointing is abandoned if another connection is
     // already checkpointing.
     const lockOptions = {
@@ -336,9 +335,15 @@ export class WriteAhead {
 
     await navigator.locks.request(`${this.#zName}#ckpt`, lockOptions, async lock => {
       if (!lock) return;
+      if (this.#abortController.signal.aborted) return;
 
       let ckptId = this.#waFile.getActiveFileStartingTxId() - 1;
       if (options.isPassive) {
+        if (!this.#mapIdToTx.has(ckptId)) {
+          // There are no transactions to checkpoint.
+          return;
+        }
+
         // Scan the txId locks to find the oldest txId.
         const busyTxId = (await this.#getTxIdLocks())
           .reduce((min, value) => Math.min(min, value.maxTxId), this.#waFile.txId);
