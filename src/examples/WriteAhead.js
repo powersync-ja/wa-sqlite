@@ -221,8 +221,8 @@ export class WriteAhead {
 
     if (!this.#txInProgress) {
       // There is no active transaction so we need to create one. But
-      // first check whether to swap WAL files.
-      const nPageThreshold = this.options.journalSizeLimit >= 0 ?
+      // first check whether to move to the other WAL file.
+      const nPageThreshold = this.options.journalSizeLimit > 0 ?
         this.options.journalSizeLimit :
         DEFAULT_JOURNAL_SIZE_LIMIT;
       if (this.#approxPageCount >= nPageThreshold && this.#isInactiveFileEmpty()) {
