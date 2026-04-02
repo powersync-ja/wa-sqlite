@@ -52,8 +52,8 @@ const VFS_CONFIGS = new Map([
     vfsModule: '../src/examples/OPFSAnyContextVFS.js',
   },
   {
-    name: 'OPFSPermutedVFS',
-    vfsModule: '../src/examples/OPFSPermutedVFS.js',
+    name: 'OPFSWriteAheadVFS',
+    vfsModule: '../src/examples/OPFSWriteAheadVFS.js',
   },
 ].map(config => [config.name, config]));
 

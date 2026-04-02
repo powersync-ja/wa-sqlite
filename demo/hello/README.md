@@ -13,7 +13,7 @@ are valid:
 
 * As of May 2024, the JSPI build works only on recent Chromium browsers
 behind an experiment flag.
-* As of May 2024, OPFSPermutedVFS works only on recent Chromium browsers
+* As of May 2024, OPFSWriteAheadVFS works only on recent Chromium browsers
 as it requires FileSystemSyncAccessHandle "readwrite-unsafe" locking.
 * Some VFS classes work only with an asynchronous build (Asyncify or JSPI).
 * OPFS VFS classes work only within a Worker.

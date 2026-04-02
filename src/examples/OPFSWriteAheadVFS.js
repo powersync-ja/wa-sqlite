@@ -167,8 +167,12 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
         file.overwrite = false;
       } else if (flags & (VFS.SQLITE_OPEN_WAL | VFS.SQLITE_OPEN_SUPER_JOURNAL)) {
         throw new Error('WAL and super-journal files are not supported');
+      } else if (file.accessHandle) {
+        // This temporary file already has an access handle, which happens
+        // only for tests. Just use it as is.
       } else {
         // This is a temporary file. Use an unbound pre-opened accessHandle.
+        if (!(flags & VFS.SQLITE_OPEN_CREATE)) throw new Error('file not found');
         file.accessHandle = this.#openTemporaryFile(zName);
       }
 
@@ -178,6 +182,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
     } catch (e) {
       console.error(e.stack);
       this.lastError = e;
+      this.mapPathToFile.delete(zName);
       return VFS.SQLITE_CANTOPEN;
     }
   }
