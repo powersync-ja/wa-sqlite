@@ -275,19 +275,22 @@ export class WriteAhead {
    * @param {number} newSize
    */
   truncate(newSize) {
-    // Remove any pages past the truncation point. We don't need to save
-    // the file size because that will be extracted from page 1.
-    for (const offset of this.#txInProgress.pages.keys()) {
-      if (offset >= newSize) {
-        this.#txInProgress.pages.delete(offset);
+    // Ignore truncation that happens outside of a transaction. That
+    // only happens (e.g. post-VACUUM) to ensure the file size matches
+    // the database header which we already track in #writePage().
+    if (this.#txInProgress) {
+      // Remove any pages past the truncation point.
+      for (const offset of this.#txInProgress.pages.keys()) {
+        if (offset >= newSize) {
+          this.#txInProgress.pages.delete(offset);
+        }
       }
+      this.#txInProgress.dbFileSize = newSize;
     }
   }
 
   getFileSize() {
-    // If the overlay is empty, the last file size may no longer be valid
-    // if direct changes were made to the main database file.
-    return this.#waOverlay.size ? this.#dbFileSize : this.#dbHandle.getSize();
+    return this.#txInProgress?.dbFileSize ?? this.#dbFileSize;
   }
 
   commit() {
@@ -828,7 +831,7 @@ export class WriteAhead {
     this.#txInProgress = {
       id: this.#txId + 1,
       pages: new Map(),
-      dbFileSize: 0,
+      dbFileSize: this.#dbFileSize,
       waSalt1: this.#activeHeader.salt1,
       waOffsetEnd: this.#activeOffset,
     };
@@ -878,6 +881,9 @@ export class WriteAhead {
       // Cache page 1 as a performance optimization and to exercise the
       // cache code path.
       pageEntry.pageData = pageData;
+    } else {
+      this.#txInProgress.dbFileSize =
+        Math.max(this.#dbFileSize, pageOffset + pageData.byteLength);
     }
 
     this.#txInProgress.pages.set(pageOffset, pageEntry);
