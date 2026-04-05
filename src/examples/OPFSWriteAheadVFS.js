@@ -18,8 +18,8 @@ const finalizationRegistry = new FinalizationRegistry((/** @type {() => void} */
  * @property {*} [retryResult]
  * @property {FileSystemSyncAccessHandle[]} [waHandles]
  * 
- * @property {'reserved'|'exclusive'} [writeHint]
- * @property {'normal'|'exclusive'|null} [lockingMode]
+ * @property {'reserved'|'exclusive'|null} [writeHint]
+ * @property {'normal'|'exclusive'} [lockingMode]
  * @property {number} [lockState] SQLITE_LOCK_*
  * @property {LazyLock} [readLock]
  * @property {LazyLock} [writeLock]
@@ -156,7 +156,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
         file.retryResult = null;
 
         file.lockState = VFS.SQLITE_LOCK_NONE;
-        file.lockingMode = null;
+        file.lockingMode = 'normal';
         file.readLock = new LazyLock(`${zName}#read`);
         file.writeLock = new LazyLock(`${zName}#write`);
         file.useLazyLock = 'readwrite';
@@ -411,34 +411,34 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
         // We do all our locking work in this transition.
         if (file.retryResult === null) {
           if (file.lockingMode === 'exclusive') {
-            // SQLite exclusive locking mode really means that no unlocking
-            // is done, not that the locking state is immediately EXCLUSIVE.
-            // This is a problem if the first transaction after setting
-            // exclusive locking mode does not come with a write hint, so
-            // we force the write hint here.
-            file.writeHint = 'exclusive';
+            // Exclusive locking mode is treated as a write, and the
+            // read lock is also acquired to block readers.
+            file.retryResult = {};
+            this._module.retryOps.push(this.#retryLockWrite(file));
+            return VFS.SQLITE_BUSY;
           }
 
-          // There are separate read and write cases. In each case if the
-          // required lock is already held then we can proceed synchronously.
-          // Otherwise we need to acquire state asynchronously and retry.
-          if (!file.writeHint) {
-            // Case 1: Read transaction with write-ahead logging.
-            if (!file.readLock.acquireIfHeld('shared')) {
-              file.retryResult = {};
-              this._module.retryOps.push(this.#retryLockRead(file));
-              return VFS.SQLITE_BUSY;
-            } else {
-              file.writeAhead.isolateForRead();
-            }
-          } else {
-            // Case 2: Write transaction with write-ahead logging.
+          // With WAL, read and write transactions use separate locks. In
+          // each case if the required lock is already held then we can
+          // proceed synchronously. Otherwise we need to acquire state
+          // asynchronously and retry.
+          if (file.writeHint) {
+            // Write transaction.
             if (!file.writeLock.acquireIfHeld('exclusive')) {
               file.retryResult = {};
               this._module.retryOps.push(this.#retryLockWrite(file));
               return VFS.SQLITE_BUSY;
             } else {
               file.writeAhead.isolateForWrite();
+            }
+          } else {
+            // Read transaction.
+            if (!file.readLock.acquireIfHeld('shared')) {
+              file.retryResult = {};
+              this._module.retryOps.push(this.#retryLockRead(file));
+              return VFS.SQLITE_BUSY;
+            } else {
+              file.writeAhead.isolateForRead();
             }
           }
         } else if (file.retryResult instanceof Error) {
@@ -454,7 +454,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
         // This is a write transaction but we don't already have the write
         // lock. This happens when the write hint was not used, which this
         // VFS treats as an error.
-        throw new Error('Multi-statement write transaction cannot use BEGIN DEFERRED');
+        throw new Error('Write transaction cannot use BEGIN DEFERRED');
       }
       file.lockState = lockType;
       return VFS.SQLITE_OK;
@@ -836,13 +836,16 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
    * @param {FileEntry} file 
    */
   async #retryLockRead(file) {
+    const onError = [];
     try {
       await file.readLock.acquire('shared', file.timeout);
+      onError.push(() => file.readLock.release());
+
       file.writeAhead.isolateForRead();
       file.retryResult = {};
     } catch (e) {
-      if (file.readLock.mode) {
-        file.readLock.release();
+      while (onError.length) {
+        onError.pop()();
       }
       file.retryResult = e;
     }
@@ -852,14 +855,23 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
    * @param {FileEntry} file 
    */
   async #retryLockWrite(file) {
+    const onError = [];
     try {
-      // Write-ahead transactions only need writeLock, not readLock.
+      // Exclusive locking mode requires both read and write locks.
+      // Otherwise, only the write lock is needed.
+      if (file.lockingMode === 'exclusive') {
+        await file.readLock.acquire('exclusive', file.timeout);
+        onError.push(() => file.readLock.release());
+      }
+
       await file.writeLock.acquire('exclusive', file.timeout);
+      onError.push(() => file.writeLock.release());
+
       file.writeAhead.isolateForWrite();
       file.retryResult = {};
     } catch (e) {
-      if (file.writeLock.mode) {
-        file.writeLock.release();
+      while (onError.length) {
+        onError.pop()();
       }
       file.retryResult = e;
     }
