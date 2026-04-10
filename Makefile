@@ -1,5 +1,5 @@
 # dependencies
-SQLITE_VERSION = trunk
+SQLITE_VERSION = version-3.53.0
 SQLITE_TARBALL_URL = https://www.sqlite.org/src/tarball/$(SQLITE_VERSION)/sqlite.tar.gz
 
 EXTENSION_FUNCTIONS = extension-functions.c
