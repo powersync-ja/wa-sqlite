@@ -57,33 +57,25 @@ To keep all the methods synchronous, when asynchronous operations are necessary 
 
 Transactions that access more than one main (non-temporary) database are not supported.
 
-### OPFSPermutedVFS
-This is a hybrid OPFS/IndexedDB VFS that allows high concurrency - simultaneous access by multiple readers and a single writer. It requires the proposed "readwrite-unsafe" locking mode for OPFS access handles (only on Chromium browsers as of June 2024).
+### OPFSWriteAheadVFS
+This is a synchronous OPFS VFS that that implements write-ahead logging. It requires the proposed "readwrite-unsafe" locking mode for OPFS access handles (only on Chromium browsers as of June 2024).
 
-OPFSPermutedVFS is a lot like SQLite WAL except that it writes directly to the database file instead of a separate write-ahead log file, so there may be more than one version of a page in the file and the location of pages is generally not sequential. All the page data is stored in the file and IndexedDB is used to manage the page versions and locations.
-
-OPFSPermutedVFS can trade durability for performance by setting `PRAGMA synchronous=normal`.
-
-Changing the page size after the database is created is not supported. Not filesystem transparent except immediately after VACUUM.
+Write-ahead logging is implemented entirely within the VFS and is always on. It does not use the WAL feature built in to SQLite.
 
 ## VFS Comparison
 
-||MemoryVFS|MemoryAsyncVFS|IDBBatchAtomicVFS|OPFSAdaptiveVFS|AccessHandlePoolVFS|OPFSAnyContextVFS|OPFSCoopSyncVFS|OPFSPermutedVFS|
+||MemoryVFS|MemoryAsyncVFS|IDBBatchAtomicVFS|OPFSAdaptiveVFS|AccessHandlePoolVFS|OPFSAnyContextVFS|OPFSCoopSyncVFS|OPFSWriteAheadVFS|
 |-|-|-|-|-|-|-|-|-|
-|Storage|RAM|RAM|IndexedDB|OPFS|OPFS|OPFS|OPFS|OPFS/IndexedDB|
-|Synchronous build|✅|:x:|:x:|:x:|✅|:x:|✅|:x:|
+|Storage|RAM|RAM|IndexedDB|OPFS|OPFS|OPFS|OPFS|OPFS|
+|Synchronous build|✅|:x:|:x:|:x:|✅|:x:|✅|✅|
 |Asyncify build|✅|✅|✅|✅|✅|✅|✅|
 |JSPI build|✅|✅|✅|✅|✅|✅|✅|✅|
 |Contexts|All|All|All|Worker|Worker|All|Worker|Worker|
-|Multiple connections|:x:|:x:|✅|✅|:x:|✅|✅|✅[^1]|
+|Multiple connections|:x:|:x:|✅|✅|:x:|✅|✅|✅|
 |Full durability|✅|✅|✅|✅|✅|✅|✅|✅|
 |Relaxed durability|:x:|:x:|✅|:x:|:x:|:x:|:x:|✅|
-|Filesystem transparency|:x:|:x:|:x:|✅|:x:|✅|✅|:x:[^2]|
-|Write-ahead logging|:x:|:x:|:x:|:x:|:x:|:x:|:x:|✅[^3]|
-|Multi-database transactions|✅|✅|✅|✅|✅|✅|:x:|✅|
-|Change page size|✅|✅|:x:|✅|✅|✅|✅|:x:|
+|Filesystem transparency|:x:|:x:|:x:|✅|:x:|✅|✅|✅|
+|Write-ahead logging|:x:|:x:|:x:|:x:|:x:|:x:|:x:|✅|
+|Multi-database transactions|✅|✅|✅|✅|✅|✅|:x:|:x:|
+|Change page size|✅|✅|:x:|✅|✅|✅|✅|✅|
 |No COOP/COEP requirements|✅|✅|✅|✅|✅|✅|✅|✅|
-
-[^1]: Requires FileSystemSyncAccessHandle readwrite-unsafe locking mode support.
-[^2]: Only filesystem transparent immediately after VACUUM.
-[^3]: [Sort of](https://github.com/rhashimoto/wa-sqlite/discussions/152).
