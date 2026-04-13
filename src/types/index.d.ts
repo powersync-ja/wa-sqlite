@@ -28,78 +28,23 @@ type SQLiteCompatibleType =
  *
  * Objects with this interface can be passed to {@link SQLiteAPI.vfs_register}
  * to define a new filesystem.
- *
- * There are examples of a synchronous
- * [MemoryVFS.js](https://github.com/rhashimoto/wa-sqlite/blob/master/src/examples/MemoryVFS.js),
- * and asynchronous
- * [MemoryAsyncVFS.js](https://github.com/rhashimoto/wa-sqlite/blob/master/src/examples/MemoryAsyncVFS.js)
- * and
- * [IndexedDbVFS.js](https://github.com/rhashimoto/wa-sqlite/blob/master/src/examples/IndexedDbVFS.js).
- *
+ * 
+ * There are [synchronous](https://github.com/rhashimoto/wa-sqlite/blob/master/src/examples/MemoryVFS.js)
+ * and [asynchronous](https://github.com/rhashimoto/wa-sqlite/blob/master/src/examples/MemoryAsyncVFS.js)
+ * example VFS classes in the repository.
+ * 
  * @see https://sqlite.org/vfs.html
  * @see https://sqlite.org/c3ref/io_methods.html
  */
 declare interface SQLiteVFS {
   /** Maximum length of a file path in UTF-8 bytes (default 64) */
-  mxPathName?: number;
+  mxPathname?: number;
+
+  name: string;
 
   close(): void|Promise<void>;
   isReady(): boolean|Promise<boolean>;
-
-  /** @see https://sqlite.org/c3ref/io_methods.html */
-  xClose(fileId: number): number|Promise<number>;
-
-  /** @see https://sqlite.org/c3ref/io_methods.html */
-  xRead(
-    fileId: number,
-    pData: number,
-    iAmt: number,
-    iOffsetLo: number,
-    iOffsetHi: number
-  ): number|Promise<number>;
-
-  /** @see https://sqlite.org/c3ref/io_methods.html */
-  xWrite(
-    fileId: number,
-    pData: number,
-    iAmt: number,
-    iOffsetLo: number,
-    iOffsetHi: number
-  ): number|Promise<number>;
-
-  /** @see https://sqlite.org/c3ref/io_methods.html */
-  xTruncate(fileId: number, iSizeLo: number, iSizeHi): number|Promise<number>;
-
-  /** @see https://sqlite.org/c3ref/io_methods.html */
-  xSync(fileId: number, flags: number): number|Promise<number>;
-
-  /** @see https://sqlite.org/c3ref/io_methods.html */
-  xFileSize(
-    fileId: number,
-    pSize64: number
-  ): number|Promise<number>;
-
-  /** @see https://sqlite.org/c3ref/io_methods.html */
-  xLock(fileId: number, flags: number): number|Promise<number>;
-
-  /** @see https://sqlite.org/c3ref/io_methods.html */
-  xUnlock(fileId: number, flags: number): number|Promise<number>;
-
-  /** @see https://sqlite.org/c3ref/io_methods.html */
-  xCheckReservedLock(
-    fileId: number,
-    pResOut: number
-  ): number|Promise<number>;
-
-  /** @see https://sqlite.org/c3ref/io_methods.html */
-  xFileControl(
-    fileId: number,
-    flags: number,
-    pOut: number
-  ): number|Promise<number>;
-
-  /** @see https://sqlite.org/c3ref/io_methods.html */
-  xDeviceCharacteristics(fileId: number): number|Promise<number>;
+  hasAsyncMethod(methodName: string): boolean;
 
   /** @see https://sqlite.org/c3ref/vfs.html */
   xOpen(
@@ -120,6 +65,79 @@ declare interface SQLiteVFS {
     flags: number,
     pResOut: number
   ): number|Promise<number>;
+
+  /** @see https://sqlite.org/c3ref/vfs.html */
+  xFullPathname(
+    pVfs: number,
+    zName: number,
+    nOut: number,
+    zOut: number
+  ): number|Promise<number>;
+
+  /** @see https://sqlite.org/c3ref/vfs.html */
+  xGetLastError(
+    pVfs: number,
+    nBuf: number,
+    zBuf: number
+  ): number|Promise<number>;
+
+  /** @see https://sqlite.org/c3ref/io_methods.html */
+  xClose(pFile: number): number|Promise<number>;
+
+  /** @see https://sqlite.org/c3ref/io_methods.html */
+  xRead(
+    pFile: number,
+    pData: number,
+    iAmt: number,
+    iOffsetLo: number,
+    iOffsetHi: number
+  ): number|Promise<number>;
+
+  /** @see https://sqlite.org/c3ref/io_methods.html */
+  xWrite(
+    pFile: number,
+    pData: number,
+    iAmt: number,
+    iOffsetLo: number,
+    iOffsetHi: number
+  ): number|Promise<number>;
+
+  /** @see https://sqlite.org/c3ref/io_methods.html */
+  xTruncate(pFile: number, sizeLo: number, sizeHi: number): number|Promise<number>;
+
+  /** @see https://sqlite.org/c3ref/io_methods.html */
+  xSync(pFile: number, flags: number): number|Promise<number>;
+
+  /** @see https://sqlite.org/c3ref/io_methods.html */
+  xFileSize(
+    pFile: number,
+    pSize: number
+  ): number|Promise<number>;
+
+  /** @see https://sqlite.org/c3ref/io_methods.html */
+  xLock(pFile: number, lockType: number): number|Promise<number>;
+
+  /** @see https://sqlite.org/c3ref/io_methods.html */
+  xUnlock(pFile: number, lockType: number): number|Promise<number>;
+
+  /** @see https://sqlite.org/c3ref/io_methods.html */
+  xCheckReservedLock(
+    pFile: number,
+    pResOut: number
+  ): number|Promise<number>;
+
+  /** @see https://sqlite.org/c3ref/io_methods.html */
+  xFileControl(
+    pFile: number,
+    op: number,
+    pArg: number
+  ): number|Promise<number>;
+
+  /** @see https://sqlite.org/c3ref/io_methods.html */
+  xSectorSize(pFile: number): number|Promise<number>;
+
+  /** @see https://sqlite.org/c3ref/io_methods.html */
+  xDeviceCharacteristics(pFile: number): number|Promise<number>;
 }
 
 /**
@@ -136,7 +154,7 @@ declare interface SQLitePrepareOptions {
 
   /**
    * SQLITE_PREPARE_* flags
-   * @see https://www.sqlite.org/c3ref/c_prepare_normalize.html#sqlitepreparepersistent
+   * @see https://sqlite.org/c3ref/c_prepare_dont_log.html#sqlitepreparepersistent
    */
   flags?: number;
 }
@@ -1149,114 +1167,66 @@ declare module "@journeyapps/wa-sqlite/dist/mc-wa-sqlite-async.mjs" {
 declare module "@journeyapps/wa-sqlite/src/VFS.js" {
   export * from "@journeyapps/wa-sqlite/src/sqlite-constants.js";
 
-  export class Base {
-    mxPathName: number;
-    /**
-     * @param {number} fileId
-     * @returns {number|Promise<number>}
-     */
-    xClose(fileId: number): number;
-    /**
-     * @param {number} fileId
-     * @param {Uint8Array} pData
-     * @param {number} iOffset
-     * @returns {number}
-     */
-    xRead(fileId: number, pData: Uint8Array, iOffset: number): number;
-    /**
-     * @param {number} fileId
-     * @param {Uint8Array} pData
-     * @param {number} iOffset
-     * @returns {number}
-     */
-    xWrite(fileId: number, pData: Uint8Array, iOffset: number): number;
-    /**
-     * @param {number} fileId
-     * @param {number} iSize
-     * @returns {number}
-     */
-    xTruncate(fileId: number, iSize: number): number;
-    /**
-     * @param {number} fileId
-     * @param {*} flags
-     * @returns {number}
-     */
-    xSync(fileId: number, flags: any): number;
-    /**
-     * @param {number} fileId
-     * @param {DataView} pSize64
-     * @returns {number|Promise<number>}
-     */
-    xFileSize(fileId: number, pSize64: DataView): number;
-    /**
-     * @param {number} fileId
-     * @param {number} flags
-     * @returns {number}
-     */
-    xLock(fileId: number, flags: number): number;
-    /**
-     * @param {number} fileId
-     * @param {number} flags
-     * @returns {number}
-     */
-    xUnlock(fileId: number, flags: number): number;
-    /**
-     * @param {number} fileId
-     * @param {DataView} pResOut
-     * @returns {number}
-     */
-    xCheckReservedLock(fileId: number, pResOut: DataView): number;
-    /**
-     * @param {number} fileId
-     * @param {number} flags
-     * @param {DataView} pArg
-     * @returns {number}
-     */
-    xFileControl(fileId: number, flags: number, pArg: DataView): number;
-    /**
-     * @param {number} fileId
-     * @returns {number}
-     */
-    xSectorSize(fileId: number): number;
-    /**
-     * @param {number} fileId
-     * @returns {number}
-     */
-    xDeviceCharacteristics(fileId: number): number;
-    /**
-     * @param {string?} name
-     * @param {number} fileId
-     * @param {number} flags
-     * @param {DataView} pOutFlags
-     * @returns {number}
-     */
+   export class Base implements SQLiteVFS {
+    name: string;
+    mxPathname: number;
+    _module: object;
+
+    constructor(name: string, module: object);
+
+    close(): void | Promise<void>;
+    isReady(): boolean | Promise<boolean>;
+    hasAsyncMethod(methodName: string): boolean;
+
     xOpen(
-      name: string | null,
-      fileId: number,
+      pVfs: number,
+      zName: number,
+      pFile: number,
       flags: number,
-      pOutFlags: DataView
-    ): number;
-    /**
-     *
-     * @param {string} name
-     * @param {number} syncDir
-     * @returns {number}
-     */
-    xDelete(name: string, syncDir: number): number;
-    /**
-     * @param {string} name
-     * @param {number} flags
-     * @param {DataView} pResOut
-     * @returns {number}
-     */
-    xAccess(name: string, flags: number, pResOut: DataView): number;
-    /**
-     * Handle asynchronous operation. This implementation will be overriden on
-     * registration by an Asyncify build.
-     * @param {function(): Promise<number>} f
-     * @returns {number}
-     */
-    handleAsync(f: () => Promise<number>): number;
+      pOutFlags: number
+    ): number | Promise<number>;
+    xDelete(pVfs: number, zName: number, syncDir: number): number | Promise<number>;
+    xAccess(
+      pVfs: number,
+      zName: number,
+      flags: number,
+      pResOut: number
+    ): number | Promise<number>;
+    xFullPathname(
+      pVfs: number,
+      zName: number,
+      nOut: number,
+      zOut: number
+    ): number | Promise<number>;
+    xGetLastError(
+      pVfs: number,
+      nBuf: number,
+      zBuf: number
+    ): number | Promise<number>;
+    xClose(pFile: number): number | Promise<number>;
+    xRead(
+      pFile: number,
+      pData: number,
+      iAmt: number,
+      iOffsetLo: number,
+      iOffsetHi: number
+    ): number | Promise<number>;
+    xWrite(
+      pFile: number,
+      pData: number,
+      iAmt: number,
+      iOffsetLo: number,
+      iOffsetHi: number
+    ): number | Promise<number>;
+    xTruncate(pFile: number, sizeLo: number, sizeHi: number): number | Promise<number>;
+    xSync(pFile: number, flags: number): number | Promise<number>;
+    xFileSize(pFile: number, pSize: number): number | Promise<number>;
+    xLock(pFile: number, lockType: number): number | Promise<number>;
+    xUnlock(pFile: number, lockType: number): number | Promise<number>;
+    xCheckReservedLock(pFile: number, pResOut: number): number | Promise<number>;
+    xFileControl(pFile: number, op: number, pArg: number): number | Promise<number>;
+    xSectorSize(pFile: number): number | Promise<number>;
+    xDeviceCharacteristics(pFile: number): number | Promise<number>;
   }
 }
 
@@ -1269,47 +1239,8 @@ declare module '@journeyapps/wa-sqlite/src/examples/IndexedDbVFS.js' {
      */
     constructor(idbName?: string);
     name: string;
-    mapIdToFile: Map<any, any>;
-    cacheSize: number;
-    db: any;
-    close(): Promise<void>;
-    /**
-     * Delete a file from IndexedDB.
-     * @param {string} name
-     */
-    deleteFile(name: string): Promise<void>;
-    /**
-     * Forcibly clear an orphaned file lock.
-     * @param {string} name
-     */
-    forceClearLock(name: string): Promise<void>;
-    _getStore(mode?: string): any;
-    /**
-     * Returns the key for file metadata.
-     * @param {string} name
-     * @returns
-     */
-    _metaKey(name: string): string;
-    /**
-     * Returns the key for file block data.
-     * @param {string} name
-     * @param {number} index
-     * @returns
-     */
-    _blockKey(name: string, index: number): string;
-    _getBlock(store: any, file: any, index: any): Promise<any>;
-    _putBlock(store: any, file: any, index: any, blockData: any): void;
-    _purgeCache(store: any, file: any, size?: number): void;
-    _flushCache(store: any, file: any): Promise<void>;
-    _sync(file: any): Promise<void>;
-    /**
-     * Helper function that deletes all keys greater or equal to `key`
-     * provided they start with `prefix`.
-     * @param {string} key
-     * @param {string} [prefix]
-     * @returns
-     */
-    _delete(key: string, prefix?: string): Promise<any>;
+    mxPathname: number;
+    _module: object;
   }
 }
 
