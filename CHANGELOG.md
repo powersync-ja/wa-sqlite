@@ -1,5 +1,11 @@
 # @journeyapps/wa-sqlite
 
+## 1.6.0
+
+### Minor Changes
+
+- 7927f23: Update SQLite to 3.53.0, PowerSync core extension to 0.4.12.
+
 ## 1.5.0
 
 ### Minor Changes
