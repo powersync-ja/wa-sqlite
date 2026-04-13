@@ -301,7 +301,7 @@ __metadata:
     "@changesets/cli": "npm:^2.26.2"
     "@types/jasmine": "npm:^5.1.4"
     "@web/dev-server": "npm:^0.4.6"
-    "@web/test-runner": "npm:^0.20.0"
+    "@web/test-runner": "npm:^0.20.2"
     "@web/test-runner-core": "npm:^0.13.4"
     comlink: "npm:^4.4.1"
     jasmine-core: "npm:^4.5.0"
@@ -674,10 +674,17 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/estree@npm:1.0.5, @types/estree@npm:^1.0.0":
+"@types/estree@npm:1.0.5":
   version: 1.0.5
   resolution: "@types/estree@npm:1.0.5"
   checksum: 7de6d928dd4010b0e20c6919e1a6c27b61f8d4567befa89252055fad503d587ecb9a1e3eab1b1901f923964d7019796db810b7fd6430acb26c32866d126fd408
+  languageName: node
+  linkType: hard
+
+"@types/estree@npm:^1.0.0":
+  version: 1.0.8
+  resolution: "@types/estree@npm:1.0.8"
+  checksum: 25a4c16a6752538ffde2826c2cc0c6491d90e69cd6187bef4a006dd2c3c45469f049e643d7e516c515f21484dc3d48fd5c870be158a5beb72f5baf3dc43e4099
   languageName: node
   linkType: hard
 
@@ -996,16 +1003,15 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@web/test-runner-chrome@npm:^0.18.0":
-  version: 0.18.0
-  resolution: "@web/test-runner-chrome@npm:0.18.0"
+"@web/test-runner-chrome@npm:^0.18.1":
+  version: 0.18.1
+  resolution: "@web/test-runner-chrome@npm:0.18.1"
   dependencies:
     "@web/test-runner-core": "npm:^0.13.0"
     "@web/test-runner-coverage-v8": "npm:^0.8.0"
-    async-mutex: "npm:0.4.0"
     chrome-launcher: "npm:^0.15.0"
     puppeteer-core: "npm:^24.0.0"
-  checksum: 5683e889e6c5e102c63a223d56778fecac32e4f062ac96b962fb123c788df7faf647fa88eb2b87e2119b20a2b90a908a34e05646fba8427b56f0cbb96740244e
+  checksum: bd0e987d65d8a4642a0407e74efe8e4531b60002be26b689b5435e574c7f6670c34c41e31f394f8a04a05642522cfc3cbdc34387f6e576a3f75dc5d8c05c7a03
   languageName: node
   linkType: hard
 
@@ -1019,41 +1025,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@web/test-runner-core@npm:^0.13.0":
-  version: 0.13.3
-  resolution: "@web/test-runner-core@npm:0.13.3"
-  dependencies:
-    "@babel/code-frame": "npm:^7.12.11"
-    "@types/babel__code-frame": "npm:^7.0.2"
-    "@types/co-body": "npm:^6.1.0"
-    "@types/convert-source-map": "npm:^2.0.0"
-    "@types/debounce": "npm:^1.2.0"
-    "@types/istanbul-lib-coverage": "npm:^2.0.3"
-    "@types/istanbul-reports": "npm:^3.0.0"
-    "@web/browser-logs": "npm:^0.4.0"
-    "@web/dev-server-core": "npm:^0.7.2"
-    chokidar: "npm:^3.4.3"
-    cli-cursor: "npm:^3.1.0"
-    co-body: "npm:^6.1.0"
-    convert-source-map: "npm:^2.0.0"
-    debounce: "npm:^1.2.0"
-    dependency-graph: "npm:^0.11.0"
-    globby: "npm:^11.0.1"
-    internal-ip: "npm:^6.2.0"
-    istanbul-lib-coverage: "npm:^3.0.0"
-    istanbul-lib-report: "npm:^3.0.1"
-    istanbul-reports: "npm:^3.0.2"
-    log-update: "npm:^4.0.0"
-    nanocolors: "npm:^0.2.1"
-    nanoid: "npm:^3.1.25"
-    open: "npm:^8.0.2"
-    picomatch: "npm:^2.2.2"
-    source-map: "npm:^0.7.3"
-  checksum: d601bd7a93d3b4ad5c819731364217770d9494d2887c605980bfd60bad946370f8412364d39db0daf962592751ae271e30df133636b19cd27abe61447d711328
-  languageName: node
-  linkType: hard
-
-"@web/test-runner-core@npm:^0.13.4":
+"@web/test-runner-core@npm:^0.13.0, @web/test-runner-core@npm:^0.13.4":
   version: 0.13.4
   resolution: "@web/test-runner-core@npm:0.13.4"
   dependencies:
@@ -1136,14 +1108,14 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@web/test-runner@npm:^0.20.0":
-  version: 0.20.0
-  resolution: "@web/test-runner@npm:0.20.0"
+"@web/test-runner@npm:^0.20.2":
+  version: 0.20.2
+  resolution: "@web/test-runner@npm:0.20.2"
   dependencies:
     "@web/browser-logs": "npm:^0.4.0"
     "@web/config-loader": "npm:^0.3.0"
     "@web/dev-server": "npm:^0.4.0"
-    "@web/test-runner-chrome": "npm:^0.18.0"
+    "@web/test-runner-chrome": "npm:^0.18.1"
     "@web/test-runner-commands": "npm:^0.9.0"
     "@web/test-runner-core": "npm:^0.13.0"
     "@web/test-runner-mocha": "npm:^0.9.0"
@@ -1159,7 +1131,7 @@ __metadata:
   bin:
     web-test-runner: dist/bin.js
     wtr: dist/bin.js
-  checksum: 15d96bf0d9466dfb041880ead1275bfe4ff46777c0b4f5743bab11c7373a1725e6245555cb6ec8655b89b625b91d18421d7a97157d25ad10631c93774fc7bec8
+  checksum: bc9f52ce56a14348cd6a419a69ce0f0782978d3a9435d4efe8112d09f0e03397b3d6bd320152e7c264a6cdbc60c6975d8516780fad0cf6e4c939f93800a4ecdf
   languageName: node
   linkType: hard
 

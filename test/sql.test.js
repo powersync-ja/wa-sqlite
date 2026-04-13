@@ -22,10 +22,10 @@ const CONFIGS = new Map([
   ['IDBMirrorVFS', ASYNC_BUILDS],
   ['OPFSAdaptiveVFS', ASYNC_BUILDS],
   ['OPFSAnyContextVFS', ASYNC_BUILDS],
-  ['OPFSPermutedVFS', ASYNC_BUILDS],
+  ['OPFSWriteAheadVFS', ASYNC_BUILDS],
 ]);
 
-const DISALLOWS_PAGE_SIZE_CHANGE = ['IDBBatchAtomicVFS', 'IDBMirrorVFS', 'OPFSPermutedVFS', 'FLOOR'];
+const DISALLOWS_PAGE_SIZE_CHANGE = ['IDBBatchAtomicVFS', 'IDBMirrorVFS'];
 const NOT_PERSISTENT = ['', 'MemoryVFS', 'MemoryAsyncVFS'];
 const SINGLE_CONNECTION = ['', 'MemoryVFS', 'MemoryAsyncVFS', 'AccessHandlePoolVFS'];
 
