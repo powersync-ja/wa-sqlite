@@ -1,5 +1,12 @@
 # @journeyapps/wa-sqlite
 
+## 1.7.0
+
+### Minor Changes
+
+- 8202839: Update PowerSync core extension to 0.4.13.
+- 76431f0: Include upstream wa-sqlite fixes for `OPFSWriteAheadVFS`: Fix manual checkpoint in exclusive locking mode, fix file size tracking, fix salt association across WAL boundary.
+
 ## 1.6.0
 
 ### Minor Changes
