@@ -1165,26 +1165,22 @@ declare module "@journeyapps/wa-sqlite" {
 
 /** @ignore */
 declare module "@journeyapps/wa-sqlite/dist/wa-sqlite.mjs" {
-  function ModuleFactory(config?: object): Promise<any>;
-  export default ModuleFactory;
+  export default function ModuleFactory(config?: object): Promise<any>;
 }
 
 /** @ignore */
 declare module "@journeyapps/wa-sqlite/dist/wa-sqlite-async.mjs" {
-  function ModuleFactory(config?: object): Promise<any>;
-  export default ModuleFactory;
+  export default function ModuleFactory(config?: object): Promise<any>;
 }
 
 /** @ignore */
 declare module "@journeyapps/wa-sqlite/dist/mc-wa-sqlite.mjs" {
-  function ModuleFactory(config?: object): Promise<any>;
-  export = ModuleFactory;
+  export default function ModuleFactory(config?: object): Promise<any>;
 }
 
 /** @ignore */
 declare module "@journeyapps/wa-sqlite/dist/mc-wa-sqlite-async.mjs" {
-  function ModuleFactory(config?: object): Promise<any>;
-  export = ModuleFactory;
+  export default function ModuleFactory(config?: object): Promise<any>;
 }
 
 /** @ignore */
