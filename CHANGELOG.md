@@ -1,5 +1,11 @@
 # @journeyapps/wa-sqlite
 
+## 1.7.2
+
+### Patch Changes
+
+- f6c92d7: Internal: Fix automated releases.
+
 ## 1.7.1
 
 ### Patch Changes
