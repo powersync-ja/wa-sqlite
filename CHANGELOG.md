@@ -1,5 +1,11 @@
 # @journeyapps/wa-sqlite
 
+## 1.7.1
+
+### Patch Changes
+
+- 4a20bd5: Fix a few type declarations.
+
 ## 1.7.0
 
 ### Minor Changes
