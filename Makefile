@@ -93,7 +93,7 @@ EMFLAGS_COMMON = \
 
 EMFLAGS_DEBUG = \
 	-s ASSERTIONS=1 \
-	-g -Oz -Oz \
+	-g -Oz \
 	$(EMFLAGS_COMMON)
 
 EMFLAGS_DIST = \
@@ -216,7 +216,7 @@ deps/$(SQLITE_VERSION)/sqlite3mc_amalgamation.c:
 	cp cache/sqlite3mc-$(MC_SQLITE_VERSION)/sqlite3mc_amalgamation.c deps/$(SQLITE_VERSION)/sqlite3mc_amalgamation.c
 
 # Download static files from PowerSync Core repository
-$(POWERSYNC_STATIC_FILES): powersync-version scripts/download-core-build.js
+$(POWERSYNC_STATIC_FILES): powersync-version scripts/download-core-build.js scripts/tools/powersync-download.js
 	node scripts/download-core-build.js
 
 ifeq ($(shell uname), Darwin)
@@ -337,7 +337,6 @@ debug/mc-wa-sqlite.mjs: $(MC_OBJ_FILES_DEBUG) $(POWERSYNC_OBJ_FILES_DEBUG) $(EXP
 	  $(COMBINED_EMFLAGS_INTERFACES) \
 	  $(EMFLAGS_LIBRARIES) \
 	  $(POWERSYNC_STATIC_FILES) \
-	  $(OBJ_FILES_DEBUG) \
 	  $(MC_OBJ_FILES_DEBUG) -o $@
 
 # Statically links PowerSync Core
