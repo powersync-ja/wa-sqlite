@@ -1,5 +1,11 @@
 # @journeyapps/wa-sqlite
 
+## 2.0.2
+
+### Patch Changes
+
+- 3e4608f: Improve checkpoints in OPFS WriteAhead VFS.
+
 ## 2.0.1
 
 ### Patch Changes
