@@ -1,5 +1,11 @@
 # @journeyapps/wa-sqlite
 
+## 2.0.3
+
+### Patch Changes
+
+- 0d094df: Remove postinstall hook (closes #81).
+
 ## 2.0.2
 
 ### Patch Changes
