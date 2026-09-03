@@ -1,5 +1,11 @@
 # @journeyapps/wa-sqlite
 
+## 2.0.4
+
+### Patch Changes
+
+- a2e8d95: Update PowerSync SQLite core extension version to 0.5.3.
+
 ## 2.0.3
 
 ### Patch Changes
