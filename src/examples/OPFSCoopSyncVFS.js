@@ -4,6 +4,7 @@ import * as VFS from '../VFS.js';
 
 const DEFAULT_TEMPORARY_FILES = 10;
 const LOCK_NOTIFY_INTERVAL = 1000;
+const ACCESS_HANDLE_RETRY_TIMEOUT = 3000;
 
 const DB_RELATED_FILE_SUFFIXES = ['', '-journal', '-wal'];
 
@@ -156,6 +157,7 @@ export class OPFSCoopSyncVFS extends FacadeVFS {
               // for the retried open.
               const persistentFile = new PersistentFile(null);
               this.persistentFiles.set(path, persistentFile);
+              this.lastError = e;
               console.error(e);
             }
           })());
@@ -520,16 +522,42 @@ export class OPFSCoopSyncVFS extends FacadeVFS {
         // Acquire the Web Lock.
         file.persistentFile.handleLockReleaser = await this.#acquireLock(file.persistentFile);
         try {
-          // Get access handles for the database and releated files in parallel.
+          // Get access handles for the database and related files in parallel.
           this.log?.(`creating access handles for ${file.path}`)
-          await Promise.all(DB_RELATED_FILE_SUFFIXES.map(async suffix => {
-            const persistentFile = this.persistentFiles.get(file.path + suffix);
-            if (persistentFile) {
-              persistentFile.accessHandle =
-                await persistentFile.fileHandle.createSyncAccessHandle();
+          const deadline = performance.now() + ACCESS_HANDLE_RETRY_TIMEOUT;
+          let delay = 25;
+          for (;;) {
+            // A rejected open does not cancel its siblings. Wait for all of
+            // them before cleanup, or a late success can leak a native handle.
+            const results = await Promise.allSettled(DB_RELATED_FILE_SUFFIXES.map(async suffix => {
+              const persistentFile = this.persistentFiles.get(file.path + suffix);
+              if (persistentFile) {
+                try {
+                  persistentFile.accessHandle =
+                    await persistentFile.fileHandle.createSyncAccessHandle();
+                } catch (cause) {
+                  const error = new Error(`${cause.message} [${file.path + suffix}]`, { cause });
+                  error.name = cause.name;
+                  throw error;
+                }
+              }
+            }));
+            const failures = results.filter(result => result.status === 'rejected');
+            if (failures.length === 0) break;
+
+            this.#closeAccessHandles(file);
+            const failure = failures.find(result => result.reason.name !== 'NoModificationAllowedError') ?? failures[0];
+            const remaining = deadline - performance.now();
+            if (failure.reason.name !== 'NoModificationAllowedError' || remaining <= 0) {
+              throw failure.reason;
             }
-          }));
+            // Native handles can outlive a closing worker's Web Lock. Keep
+            // our cooperative lock while retrying that short contention window.
+            await new Promise(resolve => setTimeout(resolve, Math.min(delay, remaining)));
+            delay = Math.min(delay * 2, 200);
+          }
         } catch (e) {
+          this.lastError = e;
           this.log?.(`failed to create access handles for ${file.path}`, e);
           // Close any of the potentially opened access handles
           this.#releaseAccessHandle(file);
@@ -547,6 +575,18 @@ export class OPFSCoopSyncVFS extends FacadeVFS {
    * @param {File} file 
    */
   #releaseAccessHandle(file) {
+    this.#closeAccessHandles(file);
+
+    file.persistentFile.handleLockReleaser?.();
+    file.persistentFile.handleLockReleaser = null;
+    this.log?.(`lock released for ${file.path}`)
+  }
+
+  /**
+   * Close native handles without releasing the cooperative Web Lock.
+   * @param {File} file
+   */
+  #closeAccessHandles(file) {
     DB_RELATED_FILE_SUFFIXES.forEach(suffix => {
       const persistentFile = this.persistentFiles.get(file.path + suffix);
       if (persistentFile) {
@@ -555,10 +595,6 @@ export class OPFSCoopSyncVFS extends FacadeVFS {
       }
     });
     this.log?.(`access handles closed for ${file.path}`)
-
-    file.persistentFile.handleLockReleaser?.();
-    file.persistentFile.handleLockReleaser = null;
-    this.log?.(`lock released for ${file.path}`)
   }
 
   /**
