@@ -1,5 +1,11 @@
 # @journeyapps/wa-sqlite
 
+## 2.0.5
+
+### Patch Changes
+
+- 24957c3: Fix race conditions in OPFSWriteAheadVFS.
+
 ## 2.0.4
 
 ### Patch Changes
