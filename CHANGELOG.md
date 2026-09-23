@@ -1,5 +1,11 @@
 # @journeyapps/wa-sqlite
 
+## 2.0.6
+
+### Patch Changes
+
+- Fix WAL size tracking for switching files.
+
 ## 2.0.5
 
 ### Patch Changes
