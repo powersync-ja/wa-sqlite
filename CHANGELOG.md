@@ -1,5 +1,11 @@
 # @journeyapps/wa-sqlite
 
+## 2.0.7
+
+### Patch Changes
+
+- fbcb8df: Improve performance of checkpoints in OPFS writeahead VFS.
+
 ## 2.0.6
 
 ### Patch Changes
