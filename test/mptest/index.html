@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SQLite mptest · wa-sqlite</title>
+    <style>
+      body {
+        font:
+          15px system-ui,
+          sans-serif;
+        margin: 2rem auto;
+        padding: 0 1rem;
+        max-width: 1200px;
+        color: #17212b;
+      }
+      h1 {
+        font-size: 1.7rem;
+      }
+      label,
+      button {
+        margin-right: 1rem;
+      }
+      button,
+      select {
+        padding: 0.45rem;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 1.5rem;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 0.55rem;
+        border-bottom: 1px solid #d7dce1;
+      }
+      th {
+        background: #eef2f5;
+      }
+      td:last-child {
+        max-width: 34rem;
+      }
+      [data-status='passed'] {
+        color: #14713c;
+      }
+      [data-status='failed'] {
+        color: #b42318;
+      }
+      [data-status='skipped'] {
+        color: #59636c;
+      }
+      pre {
+        background: #eef2f5;
+        padding: 1rem;
+        white-space: pre-wrap;
+        max-height: 20rem;
+        overflow: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>SQLite mptest · wa-sqlite</h1>
+    <p>
+      Unmodified upstream suites, using one dedicated Worker per client.
+      Unsupported combinations show their reason below.
+    </p>
+    <p>
+      <label
+        >Build
+        <select id="build"></select
+      ></label>
+      <label
+        >VFS
+        <select id="vfs">
+          <option value="all">All</option>
+        </select></label
+      >
+      <label
+        >Suite
+        <select id="suite">
+          <option value="all">All</option>
+        </select></label
+      >
+    </p>
+    <button id="run" disabled>Run enabled combinations</button>
+    <button id="stop" disabled>Stop</button>
+    <p id="summary" role="status">Checking browser capabilities…</p>
+    <table>
+      <thead>
+        <tr>
+          <th>VFS</th>
+          <th>Suite</th>
+          <th>Result / reason</th>
+          <th>Run</th>
+        </tr>
+      </thead>
+      <tbody id="matrix"></tbody>
+    </table>
+    <details>
+      <summary>Log</summary>
+      <pre id="log"></pre>
+    </details>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
