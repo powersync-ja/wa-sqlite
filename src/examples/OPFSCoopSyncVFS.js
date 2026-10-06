@@ -607,7 +607,10 @@ export class OPFSCoopSyncVFS extends FacadeVFS {
       try {
         return await fileHandle.createSyncAccessHandle();
       } catch (e) {
-        if (e.name !== 'NoModificationAllowedError' || performance.now() >= deadline) {
+        if (
+          (e.name !== 'NoModificationAllowedError' && e.name !== 'InvalidStateError') ||
+          performance.now() >= deadline
+        ) {
           throw e;
         }
         await new Promise(resolve => setTimeout(resolve, ACCESS_HANDLE_RETRY_INTERVAL));
