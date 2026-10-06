@@ -22,6 +22,7 @@ const contextId = Math.random().toString(36).slice(2);
  * @property {number} [fileSize]
  * @property {number} [oldestTxId]
  * @property {number[]} [reclaimable]
+ * @property {boolean} [checkpoint]
  */
 
 /**
@@ -159,7 +160,7 @@ export class OPFSPermutedVFS extends FacadeVFS {
         // Load the initial page map from the database.
         const tx = file.idb.transaction(['pages', 'pending']);
         const pages = await idbX(tx.objectStore('pages').getAll());
-        file.pageSize = this.#getPageSize(file);
+        file.pageSize = this.#getPageSize(file, pages.find(page => page.i === 1)?.o ?? 0);
         file.fileSize = pages.length * file.pageSize;
 
         // Begin with adding all file offsets to the free list.
@@ -494,7 +495,7 @@ export class OPFSPermutedVFS extends FacadeVFS {
    */
   jSync(fileId, flags) {
     try {
-      // Main DB sync is handled by SQLITE_FCNTL_SYNC.
+      // Main DB sync is handled by SQLITE_FCNTL_COMMIT_PHASETWO.
       const file = this.#mapIdToFile.get(fileId);
       if (!(file.flags & VFS.SQLITE_OPEN_MAIN_DB)) {
         file.accessHandle.flush();
@@ -603,6 +604,12 @@ export class OPFSPermutedVFS extends FacadeVFS {
   jUnlock(fileId, lockType) {
     const file = this.#mapIdToFile.get(fileId);
     if (lockType >= file.lockState) return VFS.SQLITE_OK;
+    // COMMIT_PHASETWO clears committed transactions. Anything still active
+    // when the write lock is released is a rollback, including hot-journal
+    // playback. Keep reading the committed map rather than its private copies.
+    if (lockType <= VFS.SQLITE_LOCK_SHARED && file.txActive) {
+      this.#rollbackTx(file);
+    }
     switch (lockType) {
       case VFS.SQLITE_LOCK_SHARED:
         file.locks.write?.();
@@ -770,14 +777,15 @@ export class OPFSPermutedVFS extends FacadeVFS {
   /**
    * Return the database page size, or 0 if not yet known.
    * @param {File} file 
+   * @param {number} [pageOffset]
    * @returns {number}
    */
-  #getPageSize(file) {
-    // Offset 0 will always contain a page 1. Even if it is out of
-    // date it will have a valid page size.
+  #getPageSize(file, pageOffset = file.mapPageToOffset.get(1) ?? 0) {
+    // During VACUUM, the durable map points to the relocated page 1 until
+    // the canonical overwrite is committed. Offset 0 may be incomplete.
     // https://sqlite.org/fileformat.html#page_size
     const header = new DataView(new ArrayBuffer(2));
-    const n = file.accessHandle.read(header, { at: 16 });
+    const n = file.accessHandle.read(header, { at: pageOffset + 16 });
     if (n !== header.byteLength) return 0;
     const pageSize = header.getUint16(0);
     switch (pageSize) {
@@ -917,8 +925,15 @@ export class OPFSPermutedVFS extends FacadeVFS {
     }
 
     file.fileSize = message.fileSize;
+    if (message.checkpoint) {
+      // The durable pages store already contains this complete view. Do not
+      // checkpoint older mappings over it during a later normal commit.
+      file.mapTxToPending.clear();
+    }
     file.mapTxToPending.set(message.txId, message);
     if (message.oldestTxId) {
+      // VACUUM reuses canonical offsets that older transactions can still
+      // list as obsolete. Never put a currently mapped offset on the free list.
       const usedOffsets = new Set(file.mapPageToOffset.values());
       // Finalize pending transactions that are no longer needed.
       for (const tx of file.mapTxToPending.values()) {
@@ -963,13 +978,10 @@ export class OPFSPermutedVFS extends FacadeVFS {
     const tx = file.idb.transaction(
       ['pages', 'pending'],
       'readwrite',
-      { durability: file.synchronous === 'full' ? 'strict' : 'relaxed'});
+      { durability: file.synchronous === 'full' || file.txIsOverwrite ? 'strict' : 'relaxed'});
 
     if (file.txActive.oldestTxId) {
       // Ensure that all pending data is safely on storage.
-      if (file.txIsOverwrite) {
-        file.accessHandle.truncate(file.txActive.fileSize);
-      }
       file.accessHandle.flush();
       
       // Transfer page mappings to the pages store for all pending
@@ -988,9 +1000,22 @@ export class OPFSPermutedVFS extends FacadeVFS {
         .delete(IDBKeyRange.upperBound(file.txActive.oldestTxId));
     }
 
+    if (file.txIsOverwrite) {
+      file.txActive.checkpoint = true;
+      // Compaction will remove the relocated copies. Persist the complete
+      // new map first, so reopening never verifies or follows those copies.
+      const pages = tx.objectStore('pages');
+      pages.clear();
+      for (const [index, { offset }] of file.txActive.pages) {
+        pages.put({ i: index, o: offset });
+      }
+      tx.objectStore('pending').clear();
+    }
+
     // Publish the transaction via broadcast and IndexedDB.
     this.log?.(`commit transaction ${file.txActive.txId}`);
-    tx.objectStore('pending').put(file.txActive);
+    tx.objectStore('pending').put(file.txIsOverwrite ?
+      { ...file.txActive, pages: new Map() } : file.txActive);
 
     const txComplete = new Promise((resolve, reject) => {
       const message = file.txActive;
@@ -1005,7 +1030,7 @@ export class OPFSPermutedVFS extends FacadeVFS {
       tx.commit();
     });
 
-    if (file.synchronous === 'full') {
+    if (file.synchronous === 'full' || file.txIsOverwrite) {
       await txComplete;
     }
 
@@ -1021,6 +1046,10 @@ export class OPFSPermutedVFS extends FacadeVFS {
       while (file.viewTx.txId !== await this.#getOldestTxInUse(file)) {
         await new Promise(resolve => setTimeout(resolve, 10));
       }
+
+      // The durable map and all live views now refer to canonical offsets.
+      file.accessHandle.truncate(file.fileSize);
+      file.accessHandle.flush();
 
       // Downgrade the exclusive read lock to a shared lock.
       file.locks.read();
@@ -1066,7 +1095,8 @@ export class OPFSPermutedVFS extends FacadeVFS {
     file.txActive = {
       txId: file.viewTx.txId + 1,
       pages: new Map(),
-      fileSize: file.fileSize
+      fileSize: file.fileSize,
+      checkpoint: true
     };
 
     // This helper generator provides offsets above fileSize.
@@ -1107,16 +1137,25 @@ export class OPFSPermutedVFS extends FacadeVFS {
     file.accessHandle.flush();
     file.freeOffsets.clear();
     
-    // Publish transaction for others.
-    file.broadcastChannel.postMessage(file.txActive);
-    const tx = file.idb.transaction('pending', 'readwrite');
+    // Persist the relocated map before overwriting canonical offsets. Older
+    // pending checksums can refer to those offsets, so checkpoint them too.
+    const tx = file.idb.transaction(['pages', 'pending'], 'readwrite', { durability: 'strict' });
     const txComplete = new Promise((resolve, reject) => {
       tx.oncomplete = resolve;
       tx.onabort = () => reject(tx.error);
     });
-    tx.objectStore('pending').put(file.txActive);
+    const pages = tx.objectStore('pages');
+    pages.clear();
+    for (const [index, offset] of file.mapPageToOffset) {
+      pages.put({ i: index, o: file.txActive.pages.get(index)?.offset ?? offset });
+    }
+    tx.objectStore('pending').clear();
+    tx.objectStore('pending').put({ ...file.txActive, pages: new Map() });
     tx.commit();
     await txComplete;
+
+    // Publish transaction for others only after recovery metadata is durable.
+    file.broadcastChannel.postMessage(file.txActive);
 
     // Incorporate the transaction into our view.
     this.#acceptTx(file, file.txActive);
