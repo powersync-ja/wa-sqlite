@@ -4,6 +4,8 @@ import * as VFS from '../VFS.js';
 
 const DEFAULT_TEMPORARY_FILES = 10;
 const LOCK_NOTIFY_INTERVAL = 1000;
+const ACCESS_HANDLE_RETRY_TIMEOUT = 1000;
+const ACCESS_HANDLE_RETRY_INTERVAL = 10;
 
 const DB_RELATED_FILE_SUFFIXES = ['', '-journal', '-wal'];
 
@@ -558,11 +560,25 @@ export class OPFSCoopSyncVFS extends FacadeVFS {
               const persistentFile = this.persistentFiles.get(file.path + suffix);
               if (persistentFile) {
                 persistentFile.accessHandle =
-                  await persistentFile.fileHandle.createSyncAccessHandle();
+                  await this.#createAccessHandle(persistentFile.fileHandle);
               }
             }));
           const failure = results.find(result => result.status === 'rejected');
           if (failure) throw failure.reason;
+
+          // Another connection may have created or deleted a journal since
+          // we opened the database. Refresh sidecar presence after taking the
+          // handles, or a surviving connection can miss a hot rollback
+          // journal after a crash. Deletion here truncates sidecars to zero.
+          for (const suffix of DB_RELATED_FILE_SUFFIXES.slice(1)) {
+            const path = file.path + suffix;
+            const persistentFile = this.persistentFiles.get(path);
+            if (persistentFile?.accessHandle?.getSize()) {
+              this.accessiblePaths.add(path);
+            } else {
+              this.accessiblePaths.delete(path);
+            }
+          }
         } catch (e) {
           this.log?.(`failed to create access handles for ${file.path}`, e);
           // Close any of the potentially opened access handles
@@ -575,6 +591,28 @@ export class OPFSCoopSyncVFS extends FacadeVFS {
       return this._module.retryOps.at(-1);
     }
     return Promise.resolve();
+  }
+
+  /**
+   * @param {FileSystemFileHandle} fileHandle
+   * @returns {Promise<FileSystemSyncAccessHandle>}
+   */
+  async #createAccessHandle(fileHandle) {
+    // After worker termination, the Web Lock can be granted before OPFS
+    // releases that worker's access handles. Keep our Web Lock while waiting
+    // for the browser to finish cleanup. Bound the wait because an unrelated
+    // context can hold an access handle without participating in our protocol.
+    const deadline = performance.now() + ACCESS_HANDLE_RETRY_TIMEOUT;
+    for (;;) {
+      try {
+        return await fileHandle.createSyncAccessHandle();
+      } catch (e) {
+        if (e.name !== 'NoModificationAllowedError' || performance.now() >= deadline) {
+          throw e;
+        }
+        await new Promise(resolve => setTimeout(resolve, ACCESS_HANDLE_RETRY_INTERVAL));
+      }
+    }
   }
 
   /**
