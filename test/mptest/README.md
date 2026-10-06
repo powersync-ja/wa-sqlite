@@ -1,5 +1,8 @@
 # SQLite mptest in a browser
 
+See [investigation findings](FINDINGS.md) for VFS bugs, fixes, validation results
+and remaining observations from the browser mptest work.
+
 The five files in `upstream/` are **unchanged** from SQLite 3.47.2, check-in
 `2aabe05e2e8cae4847a802ee2daddc1d7413d8fc560254d93ee3e72c14685b6c`.
 Source: https://sqlite.org/src/dir?ci=version-3.47.2&name=mptest
