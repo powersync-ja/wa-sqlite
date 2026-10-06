@@ -10,6 +10,12 @@ const BUILDS = new Map([
 ]);
 
 const MODULE = Symbol('module');
+
+// The Storage Bucket the "-storageBucket" configurations keep their files in.
+// A test can name another one with the storageBucket search parameter.
+export const TEST_STORAGE_BUCKET = 'wa-sqlite-test';
+const STORAGE_BUCKET_OPTIONS = Symbol('storage bucket options');
+
 const VFS_CONFIGS = new Map([
   {
     name: 'default',
@@ -55,6 +61,11 @@ const VFS_CONFIGS = new Map([
     name: 'OPFSWriteAheadVFS',
     vfsModule: '../src/examples/OPFSWriteAheadVFS.js',
   },
+  ...['AccessHandlePoolVFS', 'OPFSCoopSyncVFS', 'OPFSWriteAheadVFS'].map(className => ({
+    name: `${className}-storageBucket`,
+    vfsModule: `../src/examples/${className}.js`,
+    vfsArgs: ['demo', MODULE, STORAGE_BUCKET_OPTIONS],
+  })),
 ].map(config => [config.name, config]));
 
 const INDEXEDDB_DBNAMES = ['demo'];
@@ -76,8 +87,10 @@ maybeReset().then(async () => {
       // Create the VFS and register it as the default file system.
       const namespace = await import(config.vfsModule);
       const className = config.vfsClass ?? config.vfsModule.match(/([^/]+)\.js$/)[1];
+      const storageBucket = searchParams.get('storageBucket') ?? TEST_STORAGE_BUCKET;
       const vfsArgs = (config.vfsArgs ?? ['demo', MODULE])
-        .map(arg => arg === MODULE ? module : arg);
+        .map(arg => arg === MODULE ? module : arg)
+        .map(arg => arg === STORAGE_BUCKET_OPTIONS ? { storageBucket } : arg);
       const vfs = await namespace[className].create(...vfsArgs);
       sqlite3.vfs_register(vfs, true);
       return vfs;
@@ -151,9 +164,14 @@ async function maybeReset() {
   const abortController = new AbortController();
   setTimeout(() => abortController.abort(), 10_000);
 
-  // Clear OPFS.
-  const root = await navigator.storage?.getDirectory();
-  if (root) {
+  // Clear OPFS, in the default bucket and in every Storage Bucket.
+  const roots = [await navigator.storage?.getDirectory()];
+  // @ts-ignore
+  const buckets = navigator.storageBuckets;
+  for (const name of await buckets?.keys() ?? []) {
+    roots.push(await (await buckets.open(name)).getDirectory());
+  }
+  for (const root of roots.filter(Boolean)) {
     let opfsDeleted = false;
     while (!opfsDeleted) {
       abortController.signal.throwIfAborted();

@@ -1,6 +1,7 @@
 // Copyright 2023 Roy T. Hashimoto. All Rights Reserved.
 import { FacadeVFS } from '../FacadeVFS.js';
 import * as VFS from '../VFS.js';
+import { rootDirectory } from './storageBucket.js';
 
 const SECTOR_SIZE = 4096;
 
@@ -51,15 +52,30 @@ export class AccessHandlePoolVFS extends FacadeVFS {
 
   #mapIdToFile = new Map();
 
-  static async create(name, module) {
-    const vfs = new AccessHandlePoolVFS(name, module);
+  /** @type {() => Promise<FileSystemDirectoryHandle>} */ #getRoot;
+
+  /**
+   * @param {string} name
+   * @param {*} module
+   * @param {{ storageBucket?: string }} [options] storageBucket is the name
+   * of a Storage Bucket to keep the files in. By default they are kept in
+   * the default bucket.
+   */
+  static async create(name, module, options = {}) {
+    const vfs = new AccessHandlePoolVFS(name, module, options);
     await vfs.isReady();
     return vfs;
   }
-  
-  constructor(name, module) {
+
+  /**
+   * @param {string} name
+   * @param {*} module
+   * @param {{ storageBucket?: string }} [options]
+   */
+  constructor(name, module, options = {}) {
     super(name, module);
     this.#directoryPath = name;
+    this.#getRoot = rootDirectory(options.storageBucket);
   }
 
   /**
@@ -222,7 +238,7 @@ export class AccessHandlePoolVFS extends FacadeVFS {
   async isReady() {
     if (!this.#directoryHandle) {
       // All files are stored in a single directory.
-      let handle = await navigator.storage.getDirectory();
+      let handle = await this.#getRoot();
       for (const d of this.#directoryPath.split('/')) {
         if (d) {
           handle = await handle.getDirectoryHandle(d, { create: true });

@@ -1,6 +1,7 @@
 // Copyright 2024 Roy T. Hashimoto. All Rights Reserved.
 import { FacadeVFS } from '../FacadeVFS.js';
 import * as VFS from '../VFS.js';
+import { lockNamePrefix, rootDirectory } from './storageBucket.js';
 
 const DEFAULT_TEMPORARY_FILES = 10;
 const LOCK_NOTIFY_INTERVAL = 1000;
@@ -41,6 +42,12 @@ class PersistentFile {
   }
 }
 
+/**
+ * @typedef OPFSCoopSyncOptions
+ * @property {string} [storageBucket] Name of a Storage Bucket to keep the
+ * files in. By default they are kept in the default bucket.
+ */
+
 export class OPFSCoopSyncVFS extends FacadeVFS {
   /** @type {Map<number, File>} */ mapIdToFile = new Map();
 
@@ -53,8 +60,16 @@ export class OPFSCoopSyncVFS extends FacadeVFS {
   /** @type {Set<string>} */ accessiblePaths = new Set();
   releaser = null;
 
-  static async create(name, module) {
-    const vfs = new OPFSCoopSyncVFS(name, module);
+  /** @type {() => Promise<FileSystemDirectoryHandle>} */ #getRoot;
+  /** @type {string} */ #lockNamePrefix;
+
+  /**
+   * @param {string} name
+   * @param {*} module
+   * @param {OPFSCoopSyncOptions} [options]
+   */
+  static async create(name, module, options = {}) {
+    const vfs = new OPFSCoopSyncVFS(name, module, options);
     await Promise.all([
       vfs.isReady(),
       vfs.#initialize(DEFAULT_TEMPORARY_FILES),
@@ -62,13 +77,20 @@ export class OPFSCoopSyncVFS extends FacadeVFS {
     return vfs;
   }
 
-  constructor(name, module) {
+  /**
+   * @param {string} name
+   * @param {*} module
+   * @param {OPFSCoopSyncOptions} [options]
+   */
+  constructor(name, module, options = {}) {
     super(name, module);
+    this.#getRoot = rootDirectory(options.storageBucket);
+    this.#lockNamePrefix = lockNamePrefix(options.storageBucket);
   }
 
   async #initialize(nTemporaryFiles) {
     // Delete temporary directories no longer in use.
-    const root = await navigator.storage.getDirectory();
+    const root = await this.#getRoot();
     // @ts-ignore
     for await (const entry of root.values()) {
       if (entry.kind === 'directory' && entry.name.startsWith('.ahp-')) {
@@ -137,7 +159,7 @@ export class OPFSCoopSyncVFS extends FacadeVFS {
           this._module.retryOps.push((async () => {
             try {
               // Get the path directory handle.
-              let dirHandle = await navigator.storage.getDirectory();
+              let dirHandle = await this.#getRoot();
               const directories = path.split('/').filter(d => d);
               const filename = directories.pop();
               for (const directory of directories) {
@@ -520,10 +542,12 @@ export class OPFSCoopSyncVFS extends FacadeVFS {
    */
   async #createPersistentFile(fileHandle) {
     const persistentFile = new PersistentFile(fileHandle);
-    const root = await navigator.storage.getDirectory();
+    const root = await this.#getRoot();
     const relativePath = await root.resolve(fileHandle);
     const path = `/${relativePath.join('/')}`;
-    persistentFile.handleRequestChannel = new BroadcastChannel(`ahp:${path}`);
+    // Also the name of the lock that grants the access handle.
+    persistentFile.handleRequestChannel =
+      new BroadcastChannel(`ahp:${this.#lockNamePrefix}${path}`);
     this.persistentFiles.set(path, persistentFile);
 
     const f = await fileHandle.getFile();

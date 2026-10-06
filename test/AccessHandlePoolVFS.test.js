@@ -1,4 +1,5 @@
 import { TestContext } from "./TestContext.js";
+import { vfs_storage_bucket } from "./vfs_storage_bucket.js";
 import { vfs_xOpen } from "./vfs_xOpen.js";
 import { vfs_xAccess } from "./vfs_xAccess.js";
 import { vfs_xClose } from "./vfs_xClose.js";
@@ -26,4 +27,16 @@ describe(CONFIG, function() {
       vfs_pool_recovery({ build });
     });
   }
+});
+
+describe(`${CONFIG} in a Storage Bucket`, function() {
+  // The default build only: where the files go does not depend on the build.
+  const context = new TestContext({ config: `${CONFIG}-storageBucket` });
+
+  vfs_xAccess(context);
+  vfs_xOpen(context);
+  vfs_xClose(context);
+  vfs_xRead(context);
+  vfs_xWrite(context);
+  vfs_storage_bucket({ config: CONFIG });
 });
