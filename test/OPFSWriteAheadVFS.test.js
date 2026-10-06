@@ -6,6 +6,7 @@ import { vfs_xRead } from "./vfs_xRead.js";
 import { vfs_xWrite } from "./vfs_xWrite.js";
 import { vfs_read_freshness } from "./vfs_read_freshness.js";
 import { vfs_open_cleanup } from "./vfs_open_cleanup.js";
+import { vfs_page_size_retry } from "./vfs_page_size_retry.js";
 
 const CONFIG = 'OPFSWriteAheadVFS';
 const BUILDS = ['default', 'asyncify', 'jspi'];
@@ -26,6 +27,7 @@ describe(CONFIG, function() {
       vfs_xWrite(context);
       vfs_read_freshness({ build });
       vfs_open_cleanup(context);
+      vfs_page_size_retry(context);
     });
   }
 });

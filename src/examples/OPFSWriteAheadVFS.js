@@ -19,6 +19,7 @@ const finalizationRegistry = new FinalizationRegistry((/** @type {() => void} */
  * @property {FileSystemSyncAccessHandle[]} [waHandles]
  * 
  * @property {'reserved'|'exclusive'|null} [writeHint]
+ * @property {boolean} [retryWriteHint]
  * @property {'normal'|'exclusive'} [lockingMode]
  * @property {number} [lockState] SQLITE_LOCK_*
  * @property {LazyLock} [readLock]
@@ -163,6 +164,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
         file.timeout = -1;
         file.synchronous = 1; // NORMAL
         file.writeHint = null;
+        file.retryWriteHint = false;
         file.pageSize = null;
         file.overwrite = false;
       } else if (flags & (VFS.SQLITE_OPEN_WAL | VFS.SQLITE_OPEN_SUPER_JOURNAL)) {
@@ -286,6 +288,16 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
         // an error because pData is a Proxy of a Uint8Array. Calling
         // subarray() produces a real Uint8Array and that works.
         bytesRead = file.accessHandle.read(pData.subarray(), { at: iOffset });
+      }
+
+      if ((file.flags & VFS.SQLITE_OPEN_MAIN_DB) &&
+          file.writeHint && iOffset === 0 && pData.byteLength >= 512 && bytesRead >= 100) {
+        const header = pData.subarray(16, 18);
+        const encodedSize = (header[0] << 8) | header[1];
+        const pageSize = encodedSize === 1 ? 65536 : encodedSize;
+        // SQLite unlocks and rereads page 1 when the page size has changed,
+        // without issuing another write hint for that internal retry.
+        file.retryWriteHint = pageSize >= 512 && pageSize !== pData.byteLength;
       }
 
       if (bytesRead < pData.byteLength) {
@@ -506,7 +518,8 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
         }
 
         // Reset state for the next transaction.
-        file.writeHint = null;
+        if (!file.retryWriteHint) file.writeHint = null;
+        file.retryWriteHint = false;
       }
       file.lockState = lockType;
     } catch (e) {

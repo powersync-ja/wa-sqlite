@@ -212,6 +212,10 @@ export async function openConnection({
       await vfs?.close?.();
     }
   };
+  // Upstream mptest expects each new read transaction to see committed writes.
+  // This VFS otherwise permits a view that lags queued transaction broadcasts.
+  if (config.name === 'OPFSWriteAheadVFS')
+    await execute('PRAGMA wal_read_latest=1;');
   if (!sync) await execute('PRAGMA synchronous=OFF;');
   return connection;
 }
