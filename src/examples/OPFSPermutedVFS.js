@@ -461,7 +461,7 @@ export class OPFSPermutedVFS extends FacadeVFS {
   jTruncate(fileId, iSize) {
     try {
       const file = this.#mapIdToFile.get(fileId);
-      if ((file.flags & VFS.SQLITE_OPEN_MAIN_DB) && !file.txIsOverwrite) {
+      if (file.flags & VFS.SQLITE_OPEN_MAIN_DB) {
         file.abortController.signal.throwIfAborted();
         if (!file.txActive) {
           this.#beginTx(file);
@@ -919,6 +919,7 @@ export class OPFSPermutedVFS extends FacadeVFS {
     file.fileSize = message.fileSize;
     file.mapTxToPending.set(message.txId, message);
     if (message.oldestTxId) {
+      const usedOffsets = new Set(file.mapPageToOffset.values());
       // Finalize pending transactions that are no longer needed.
       for (const tx of file.mapTxToPending.values()) {
         if (tx.txId > message.oldestTxId) break;
@@ -926,7 +927,7 @@ export class OPFSPermutedVFS extends FacadeVFS {
         // Return no longer referenced pages to the free list.
         for (const offset of tx.reclaimable) {
           this.log?.(`reclaim offset ${offset}`);
-          file.freeOffsets.add(offset);
+          if (!usedOffsets.has(offset)) file.freeOffsets.add(offset);
         }
         file.mapTxToPending.delete(tx.txId);
       }
