@@ -57,7 +57,6 @@ COMBINED_EXPORTED_FUNCTIONS = tmp/combined_exports.json
 MC_COMBINED_EXPORTED_FUNCTIONS = tmp/mc_combined_exports.json
 
 EXPORTED_RUNTIME_METHODS = src/extra_exported_runtime_methods.json
-ASYNCIFY_IMPORTS = src/asyncify_imports.json
 JSPI_EXPORTS = src/jspi_exports.json
 
 # intermediate files
@@ -134,8 +133,7 @@ EMFLAGS_LIBRARIES = \
 	--post-js src/libvfs.js
 
 EMFLAGS_ASYNCIFY_COMMON = \
-	-s ASYNCIFY \
-	-s ASYNCIFY_IMPORTS=@src/asyncify_imports.json
+	-s ASYNCIFY
 
 EMFLAGS_ASYNCIFY_DEBUG = \
 	$(EMFLAGS_ASYNCIFY_COMMON) \
@@ -147,7 +145,6 @@ EMFLAGS_ASYNCIFY_DIST = \
 
 EMFLAGS_JSPI = \
 	-s JSPI \
-	-s ASYNCIFY_IMPORTS=@src/asyncify_imports.json \
 	-s JSPI_EXPORTS=@src/jspi_exports.json
 
 # https://www.sqlite.org/compile.html
