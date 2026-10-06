@@ -25,7 +25,16 @@ MPTEST_VFS=OPFSCoopSyncVFS MPTEST_BUILD=default MPTEST_SUITE=crash01.test pnpm t
 pnpm test:mptest:manual
 ```
 
-Each filter accepts comma-separated names; omitted filters select all.
+Each filter accepts comma-separated names. By default, each VFS runs once per
+suite: synchronous VFSes use the default build, and asynchronous VFSes use
+Asyncify. Runner SQLite checks use the default build. Set `MPTEST_BUILD` to select
+other builds or restore the full build matrix:
+
+```sh
+MPTEST_BUILD=default,asyncify,jspi pnpm test:mptest
+```
+
+Omitted VFS and suite filters select all.
 The regular `pnpm test` remains the existing short test suite. mptest has its
 own command because the full matrix, particularly `config02.test`, is expensive.
 

@@ -1,5 +1,5 @@
 import { getConfig } from '@web/test-runner-core/browser/session.js';
-import { BUILDS, SUITES, VFS_CONFIGS, skipReason } from './configs.js';
+import { SUITES, VFS_CONFIGS, skipReason, testBuilds } from './configs.js';
 import { getCapabilities, runSuite } from './runner.js';
 
 const { testFrameworkConfig } = await getConfig();
@@ -10,11 +10,7 @@ const select = (entries, filter, name = (entry) => entry.name) =>
 
 describe('SQLite upstream mptest', () => {
   for (const vfs of select(VFS_CONFIGS, filters.vfs)) {
-    for (const build of select(
-      Object.keys(BUILDS),
-      filters.build,
-      (entry) => entry
-    )) {
+    for (const build of testBuilds(vfs, filters.build)) {
       for (const suite of select(SUITES, filters.suite)) {
         it(
           `${vfs.name} / ${build} / ${suite.name}`,

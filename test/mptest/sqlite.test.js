@@ -1,8 +1,12 @@
+import { getConfig } from '@web/test-runner-core/browser/session.js';
 import { openConnection } from './sqlite.js';
-import { VFS_CONFIGS, BUILDS } from './configs.js';
+import { VFS_CONFIGS, testBuilds } from './configs.js';
+
+const { testFrameworkConfig } = await getConfig();
+const vfs = VFS_CONFIGS.find((vfs) => vfs.name === 'MemoryVFS');
 
 describe('mptest SQLite connection', () => {
-  for (const build of Object.keys(BUILDS)) {
+  for (const build of testBuilds(vfs, testFrameworkConfig.mptest.build)) {
     describe(build, () => {
       let connection;
       beforeEach(async () => {
@@ -15,7 +19,7 @@ describe('mptest SQLite connection', () => {
         }
         connection = await openConnection({
           build,
-          vfs: VFS_CONFIGS.find((vfs) => vfs.name === 'MemoryVFS'),
+          vfs,
           namespace: 'mptest-memory',
           filename: 'test.db'
         });

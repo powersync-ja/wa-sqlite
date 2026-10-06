@@ -64,6 +64,11 @@ export const SUITES = [
   { name: 'config02.test', crash: true, changePageSize: true }
 ];
 
+// The main run uses one build per VFS; explicit filters opt into other builds.
+export function testBuilds(vfs, builds) {
+  return builds ?? [vfs.async ? 'asyncify' : 'default'];
+}
+
 export function skipReason(suite, vfs, build, capabilities = {}) {
   if (!vfs.concurrent)
     return 'Requires a database shared by independent Workers; this VFS does not support concurrent access.';
