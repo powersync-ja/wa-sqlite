@@ -2,7 +2,6 @@ import { FacadeVFS } from "../FacadeVFS.js";
 import * as VFS from '../VFS.js';
 import { LazyLock } from "./LazyLock.js";
 import { WriteAhead } from "./WriteAhead.js";
-import { lockNamePrefix, rootDirectory } from "./storageBucket.js";
 
 const LIBRARY_FILES_ROOT = '.wa-sqlite';
 const DEFAULT_TEMP_FILES = 6;
@@ -38,8 +37,15 @@ const finalizationRegistry = new FinalizationRegistry((/** @type {() => void} */
  * @property {number} [nTmpFiles]
  * @property {number} [autoCheckpoint]
  * @property {number} [backstopInterval]
- * @property {string} [storageBucket] Name of a Storage Bucket to keep the
- * files in. By default they are kept in the default bucket.
+ * @property {() => Promise<FileSystemDirectoryHandle>} [getRoot] Returns the
+ * directory the VFS keeps its files in. It is called each time the VFS needs
+ * the directory. By default the root of the origin private file system,
+ * navigator.storage.getDirectory().
+ * @property {string} [lockPrefix] Put in front of the names of the Web Locks
+ * and BroadcastChannels the VFS derives from its file names. Set it when a
+ * file of the same name can exist under another root of this origin, so the
+ * two do not share locks. By default empty, which keeps the names as they
+ * were.
  */
 
 export class OPFSWriteAheadVFS extends FacadeVFS {
@@ -58,7 +64,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
   _ready;
 
   /** @type {() => Promise<FileSystemDirectoryHandle>} */ #getRoot;
-  /** @type {string} */ #lockNamePrefix;
+  /** @type {string} */ #lockPrefix;
 
   /**
    * @param {string} name
@@ -80,8 +86,8 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
     super(name, module);
     // Applied before the directory is requested, which happens below.
     Object.assign(this.options, options);
-    this.#getRoot = rootDirectory(this.options.storageBucket);
-    this.#lockNamePrefix = lockNamePrefix(this.options.storageBucket);
+    this.#getRoot = this.options.getRoot ?? (() => navigator.storage.getDirectory());
+    this.#lockPrefix = this.options.lockPrefix ?? '';
     this._ready = (async () => {
       // Ensure the library files root directory exists.
       let dirHandle = await this.#getRoot();
@@ -176,8 +182,8 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
 
         file.lockState = VFS.SQLITE_LOCK_NONE;
         file.lockingMode = 'normal';
-        file.readLock = new LazyLock(`${this.#lockNamePrefix}${zName}#read`);
-        file.writeLock = new LazyLock(`${this.#lockNamePrefix}${zName}#write`);
+        file.readLock = new LazyLock(`${this.#lockPrefix}${zName}#read`);
+        file.writeLock = new LazyLock(`${this.#lockPrefix}${zName}#write`);
         file.useLazyLock = 'readwrite';
         file.timeout = -1;
         file.synchronous = 1; // NORMAL
@@ -922,7 +928,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
     const file = this.mapPathToFile.get(zName);
     try {
       const { accessHandle, waHandles } =
-        await navigator.locks.request(`${this.#lockNamePrefix}${zName}#open`, async lock => {
+        await navigator.locks.request(`${this.#lockPrefix}${zName}#open`, async lock => {
         // Parse the path components.
         const directoryNames = zName.split('/').filter(d => d);
         const dbName = directoryNames.pop();
@@ -987,7 +993,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
       // Create the write-ahead manager.
       // WriteAhead uses the name only to name its locks and its channel.
       const writeAhead = new WriteAhead(
-        `${this.#lockNamePrefix}${zName}`, accessHandle, waHandles);
+        `${this.#lockPrefix}${zName}`, accessHandle, waHandles);
       await writeAhead.ready();
 
       file.retryResult = { accessHandle, waHandles, writeAhead };

@@ -1,7 +1,6 @@
 // Copyright 2023 Roy T. Hashimoto. All Rights Reserved.
 import { FacadeVFS } from '../FacadeVFS.js';
 import * as VFS from '../VFS.js';
-import { rootDirectory } from './storageBucket.js';
 
 const SECTOR_SIZE = 4096;
 
@@ -31,6 +30,14 @@ const DEFAULT_CAPACITY = 6;
  * work with the regular SQLite WebAssembly build, i.e. the one without
  * Asyncify.
  */
+/**
+ * @typedef AccessHandlePoolOptions
+ * @property {() => Promise<FileSystemDirectoryHandle>} [getRoot] Returns the
+ * directory the VFS keeps its files in. It is called each time the VFS needs
+ * the directory. By default the root of the origin private file system,
+ * navigator.storage.getDirectory().
+ */
+
 export class AccessHandlePoolVFS extends FacadeVFS {
   log = null; //function(...args) { console.log(`[${contextName}]`, ...args) };
 
@@ -57,9 +64,7 @@ export class AccessHandlePoolVFS extends FacadeVFS {
   /**
    * @param {string} name
    * @param {*} module
-   * @param {{ storageBucket?: string }} [options] storageBucket is the name
-   * of a Storage Bucket to keep the files in. By default they are kept in
-   * the default bucket.
+   * @param {AccessHandlePoolOptions} [options]
    */
   static async create(name, module, options = {}) {
     const vfs = new AccessHandlePoolVFS(name, module, options);
@@ -70,12 +75,12 @@ export class AccessHandlePoolVFS extends FacadeVFS {
   /**
    * @param {string} name
    * @param {*} module
-   * @param {{ storageBucket?: string }} [options]
+   * @param {AccessHandlePoolOptions} [options]
    */
   constructor(name, module, options = {}) {
     super(name, module);
     this.#directoryPath = name;
-    this.#getRoot = rootDirectory(options.storageBucket);
+    this.#getRoot = options.getRoot ?? (() => navigator.storage.getDirectory());
   }
 
   /**
