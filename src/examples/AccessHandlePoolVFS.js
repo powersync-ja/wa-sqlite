@@ -25,19 +25,19 @@ const PERSISTENT_FILE_TYPES =
 const DEFAULT_CAPACITY = 6;
 
 /**
+ * @typedef AccessHandlePoolOptions
+ * @property {() => Promise<FileSystemDirectoryHandle>} [getRoot] Returns the
+ * directory the VFS keeps its files in. It is called once, when the VFS
+ * starts, and the directory is kept. By default the root of the origin
+ * private file system, navigator.storage.getDirectory().
+ */
+
+/**
  * This VFS uses the updated Access Handle API with all synchronous methods
  * on FileSystemSyncAccessHandle (instead of just read and write). It will
  * work with the regular SQLite WebAssembly build, i.e. the one without
  * Asyncify.
  */
-/**
- * @typedef AccessHandlePoolOptions
- * @property {() => Promise<FileSystemDirectoryHandle>} [getRoot] Returns the
- * directory the VFS keeps its files in. It is called each time the VFS needs
- * the directory. By default the root of the origin private file system,
- * navigator.storage.getDirectory().
- */
-
 export class AccessHandlePoolVFS extends FacadeVFS {
   log = null; //function(...args) { console.log(`[${contextName}]`, ...args) };
 

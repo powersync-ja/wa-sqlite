@@ -48,10 +48,12 @@ class PersistentFile {
  * the directory. By default the root of the origin private file system,
  * navigator.storage.getDirectory().
  * @property {string} [lockPrefix] Put in front of the names of the Web Locks
- * and BroadcastChannels the VFS derives from its file names. Set it when a
- * file of the same name can exist under another root of this origin, so the
- * two do not share locks. By default empty, which keeps the names as they
- * were.
+ * and BroadcastChannels the VFS derives from its file and directory names.
+ * Set it when a file of the same name can exist under another root of this
+ * origin, so the two do not share locks, and use the same prefix for every
+ * VFS instance on one root. A file under the default root whose name starts
+ * with the prefix still shares names with the other root. By default empty,
+ * which keeps the names as they were.
  */
 
 export class OPFSCoopSyncVFS extends FacadeVFS {

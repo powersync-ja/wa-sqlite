@@ -42,10 +42,12 @@ const finalizationRegistry = new FinalizationRegistry((/** @type {() => void} */
  * the directory. By default the root of the origin private file system,
  * navigator.storage.getDirectory().
  * @property {string} [lockPrefix] Put in front of the names of the Web Locks
- * and BroadcastChannels the VFS derives from its file names. Set it when a
- * file of the same name can exist under another root of this origin, so the
- * two do not share locks. By default empty, which keeps the names as they
- * were.
+ * and BroadcastChannels the VFS derives from its file and directory names.
+ * Set it when a file of the same name can exist under another root of this
+ * origin, so the two do not share locks, and use the same prefix for every
+ * VFS instance on one root. A file under the default root whose name starts
+ * with the prefix still shares names with the other root. By default empty,
+ * which keeps the names as they were.
  */
 
 export class OPFSWriteAheadVFS extends FacadeVFS {
@@ -98,7 +100,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
       for await (const name of dirHandle.keys()) {
         if (name.startsWith('.session-')) {
           // Acquire a lock on the session directory to ensure it is not in use.
-          await navigator.locks.request(name, { ifAvailable: true }, async lock => {
+          await navigator.locks.request(this.#lockPrefix + name, { ifAvailable: true }, async lock => {
             if (lock) {
               // This directory is not in use.
               try {
@@ -114,7 +116,7 @@ export class OPFSWriteAheadVFS extends FacadeVFS {
       // Create our session directory.
       const dirName = `.session-${Math.random().toString(16).slice(2)}`;
       await new Promise(resolve => {
-        navigator.locks.request(dirName, () => {
+        navigator.locks.request(this.#lockPrefix + dirName, () => {
           // @ts-ignore
           resolve();
           return new Promise(release => {

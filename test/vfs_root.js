@@ -47,6 +47,10 @@ export function vfs_root({ config }) {
           clearTimeout(timer);
           resolve(data);
         }, { once: true });
+        worker.addEventListener('error', (event) => {
+          clearTimeout(timer);
+          reject(new Error(`worker error: ${event.message}`));
+        }, { once: true });
         worker.postMessage(message);
       });
     }
