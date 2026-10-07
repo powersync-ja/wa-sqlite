@@ -1,6 +1,6 @@
 // Support for keeping a VFS's files in a Storage Bucket instead of the
 // default bucket of the origin private file system.
-// https://developer.mozilla.org/docs/Web/API/Storage_API/Storage_buckets
+// https://wicg.github.io/storage-buckets/
 
 /**
  * Returns a function that gets the directory a VFS keeps its files in: the
