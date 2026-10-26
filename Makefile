@@ -57,7 +57,6 @@ COMBINED_EXPORTED_FUNCTIONS = tmp/combined_exports.json
 MC_COMBINED_EXPORTED_FUNCTIONS = tmp/mc_combined_exports.json
 
 EXPORTED_RUNTIME_METHODS = src/extra_exported_runtime_methods.json
-ASYNCIFY_IMPORTS = src/asyncify_imports.json
 JSPI_EXPORTS = src/jspi_exports.json
 
 # intermediate files
@@ -134,8 +133,7 @@ EMFLAGS_LIBRARIES = \
 	--post-js src/libvfs.js
 
 EMFLAGS_ASYNCIFY_COMMON = \
-	-s ASYNCIFY \
-	-s ASYNCIFY_IMPORTS=@src/asyncify_imports.json
+	-s ASYNCIFY
 
 EMFLAGS_ASYNCIFY_DEBUG = \
 	$(EMFLAGS_ASYNCIFY_COMMON) \
@@ -147,7 +145,6 @@ EMFLAGS_ASYNCIFY_DIST = \
 
 EMFLAGS_JSPI = \
 	-s JSPI \
-	-s ASYNCIFY_IMPORTS=@src/asyncify_imports.json \
 	-s JSPI_EXPORTS=@src/jspi_exports.json
 
 # https://www.sqlite.org/compile.html
@@ -371,9 +368,7 @@ debug/wa-sqlite-dynamic-main.mjs: $(OBJ_FILES_DEBUG) $(EXPORTED_FUNCTIONS) $(EXP
 	  $(EMFLAGS_LIBRARIES) \
 	  $(OBJ_FILES_DEBUG) -o $@
 
-# Dynamic main module
-# Exported functions are omitted here since everything is currently exported
-debug/wa-sqlite-dynamic-main-async.mjs: $(OBJ_FILES_DEBUG) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS) $(ASYNCIFY_IMPORTS)  $(COMBINED_EXPORTED_FUNCTIONS)
+debug/wa-sqlite-async.mjs: $(OBJ_FILES_DEBUG) $(JSFILES) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS)
 	mkdir -p debug
 	$(EMCC) $(EMFLAGS_DEBUG) $(EMFLAGS_DYNAMIC) \
 	  $(EMFLAGS_INTERFACES) \
@@ -381,27 +376,13 @@ debug/wa-sqlite-dynamic-main-async.mjs: $(OBJ_FILES_DEBUG) $(EXPORTED_FUNCTIONS)
 	  $(EMFLAGS_ASYNCIFY_DEBUG) \
 	  $(OBJ_FILES_DEBUG) -o $@
 
-## Debug FTS builds
-# .PHONY: debug
-# debug: debug/wa-sqlite.mjs debug/wa-sqlite-async.mjs
-
-# debug/wa-sqlite.mjs: $(OBJ_FILES_DEBUG_FTS) $(RS_DEBUG_BC) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS)
-# 	mkdir -p debug
-# 	$(EMCC) $(EMFLAGS_DEBUG) \
-# 	  $(EMFLAGS_INTERFACES) \
-# 	  $(EMFLAGS_LIBRARIES) \
-# 		$(RS_WASM_TGT_DIR)/debug/deps/*.bc \
-# 	  $(OBJ_FILES_DEBUG_FTS) *.o -o $@
-
-# debug/wa-sqlite-async.mjs: $(OBJ_FILES_DEBUG_FTS) $(RS_DEBUG_BC) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS) $(ASYNCIFY_IMPORTS)
-# 	mkdir -p debug
-# 	$(EMCC) $(EMFLAGS_DEBUG) \
-# 	  $(EMFLAGS_INTERFACES) \
-# 	  $(EMFLAGS_LIBRARIES) \
-# 	  $(EMFLAGS_ASYNCIFY_DEBUG) \
-# 		$(RS_WASM_TGT_DIR)/debug/deps/*.bc \
-# 	  $(OBJ_FILES_DEBUG_FTS) *.o -o $@
-
+debug/wa-sqlite-jspi.mjs: $(OBJ_FILES_DEBUG) $(JSFILES) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS)
+	mkdir -p debug
+	$(EMCC) $(EMFLAGS_DEBUG) \
+	  $(EMFLAGS_INTERFACES) \
+	  $(EMFLAGS_LIBRARIES) \
+	  $(EMFLAGS_JSPI) \
+	  $(OBJ_FILES_DEBUG) -o $@
 
 ## dist
 .PHONY: clean-dist
@@ -433,7 +414,7 @@ dist/wa-sqlite-async.mjs: $(OBJ_FILES_DIST) $(POWERSYNC_OBJ_FILES_DIST) $(EXPORT
 	  $(OBJ_FILES_DIST) -o $@
 
 # Statically links PowerSync Core
-dist/wa-sqlite-jspi.mjs: $(OBJ_FILES_DIST) $(POWERSYNC_OBJ_FILES_DIST) $(JSFILES) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS) $(ASYNCIFY_IMPORTS) $(POWERSYNC_STATIC_FILES) $(COMBINED_EXPORTED_FUNCTIONS)
+dist/wa-sqlite-async.mjs: $(OBJ_FILES_DIST) $(JSFILES) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS)
 	mkdir -p dist
 	$(EMCC) $(EMFLAGS_DIST) \
 	  $(COMBINED_EMFLAGS_INTERFACES) \
@@ -494,5 +475,13 @@ dist/wa-sqlite-async-dynamic-main.mjs: $(OBJ_FILES_DIST) $(EXPORTED_FUNCTIONS) $
 	  $(EMFLAGS_ASYNCIFY_DIST) \
 	  $(OBJ_FILES_DIST) -o $@
 
-
-FORCE:
+# Statically links PowerSync Core
+dist/wa-sqlite-jspi.mjs: $(OBJ_FILES_DIST) $(JSFILES) $(EXPORTED_FUNCTIONS) $(EXPORTED_RUNTIME_METHODS)
+	mkdir -p dist
+	$(EMCC) $(EMFLAGS_DIST) \
+	  $(EMFLAGS_INTERFACES) \
+	  $(EMFLAGS_LIBRARIES) \
+	  $(EMFLAGS_JSPI) \
+	  $(OBJ_FILES_DIST) \
+	  $(POWERSYNC_STATIC_FILES) \
+	  $(POWERSYNC_OBJ_FILES_DIST) -o $@
