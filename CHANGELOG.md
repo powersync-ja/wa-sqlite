@@ -1,5 +1,11 @@
 # @journeyapps/wa-sqlite
 
+## 2.0.9
+
+### Patch Changes
+
+- fc7a5d1: Add getRoot and lockPrefix options for OPFS file systems.
+
 ## 2.0.8
 
 ### Patch Changes
