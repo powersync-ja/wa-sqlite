@@ -5,6 +5,19 @@ import * as VFS from '../VFS.js';
 const DEFAULT_TEMPORARY_FILES = 10;
 const LOCK_NOTIFY_INTERVAL = 1000;
 
+// A connection terminated mid-call releases its Web Lock at once and its
+// access handles only later: from a few ms to about a second, depending on
+// the engine, the platform and what the worker was doing. The next lock
+// holder sees the file as held meanwhile, so creating its handles is
+// retried, within this bound.
+const HELD_RETRY_TIMEOUT = 5000;
+const HELD_RETRY_INTERVAL = 10;
+
+// What createSyncAccessHandle() throws on a file another handle holds:
+// NoModificationAllowedError in Chromium and Firefox, InvalidStateError in
+// WebKit.
+const HELD_ERRORS = new Set(['NoModificationAllowedError', 'InvalidStateError']);
+
 const DB_RELATED_FILE_SUFFIXES = ['', '-journal', '-wal'];
 
 const finalizationRegistry = new FinalizationRegistry(releaser => releaser());
@@ -41,6 +54,21 @@ class PersistentFile {
   }
 }
 
+/**
+ * @typedef OPFSCoopSyncOptions
+ * @property {() => Promise<FileSystemDirectoryHandle>} [getRoot] Returns the
+ * directory the VFS keeps its files in. It is called each time the VFS needs
+ * the directory. By default the root of the origin private file system,
+ * navigator.storage.getDirectory().
+ * @property {string} [prefix] Put in front of the names of the Web Locks
+ * and BroadcastChannels the VFS derives from its file names. Set it when a
+ * file of the same name can exist under another root of this origin, so the
+ * two do not share them, and use the same prefix for every VFS instance on
+ * one root. A file under the default root whose name starts with the prefix
+ * still shares names with the other root. By default empty, which keeps the
+ * names as they were.
+ */
+
 export class OPFSCoopSyncVFS extends FacadeVFS {
   /** @type {Map<number, File>} */ mapIdToFile = new Map();
 
@@ -53,8 +81,18 @@ export class OPFSCoopSyncVFS extends FacadeVFS {
   /** @type {Set<string>} */ accessiblePaths = new Set();
   releaser = null;
 
-  static async create(name, module) {
-    const vfs = new OPFSCoopSyncVFS(name, module);
+  /** @type {OPFSCoopSyncOptions} */ options = {
+    getRoot: () => navigator.storage.getDirectory(),
+    prefix: '',
+  };
+
+  /**
+   * @param {string} name
+   * @param {*} module
+   * @param {OPFSCoopSyncOptions} [options]
+   */
+  static async create(name, module, options = {}) {
+    const vfs = new OPFSCoopSyncVFS(name, module, options);
     await Promise.all([
       vfs.isReady(),
       vfs.#initialize(DEFAULT_TEMPORARY_FILES),
@@ -62,13 +100,19 @@ export class OPFSCoopSyncVFS extends FacadeVFS {
     return vfs;
   }
 
-  constructor(name, module) {
+  /**
+   * @param {string} name
+   * @param {*} module
+   * @param {OPFSCoopSyncOptions} [options]
+   */
+  constructor(name, module, options = {}) {
     super(name, module);
+    Object.assign(this.options, options);
   }
 
   async #initialize(nTemporaryFiles) {
     // Delete temporary directories no longer in use.
-    const root = await navigator.storage.getDirectory();
+    const root = await this.options.getRoot();
     // @ts-ignore
     for await (const entry of root.values()) {
       if (entry.kind === 'directory' && entry.name.startsWith('.ahp-')) {
@@ -137,7 +181,7 @@ export class OPFSCoopSyncVFS extends FacadeVFS {
           this._module.retryOps.push((async () => {
             try {
               // Get the path directory handle.
-              let dirHandle = await navigator.storage.getDirectory();
+              let dirHandle = await this.options.getRoot();
               const directories = path.split('/').filter(d => d);
               const filename = directories.pop();
               for (const directory of directories) {
@@ -520,10 +564,12 @@ export class OPFSCoopSyncVFS extends FacadeVFS {
    */
   async #createPersistentFile(fileHandle) {
     const persistentFile = new PersistentFile(fileHandle);
-    const root = await navigator.storage.getDirectory();
+    const root = await this.options.getRoot();
     const relativePath = await root.resolve(fileHandle);
     const path = `/${relativePath.join('/')}`;
-    persistentFile.handleRequestChannel = new BroadcastChannel(`ahp:${path}`);
+    // Also the name of the lock that grants the access handle.
+    persistentFile.handleRequestChannel =
+      new BroadcastChannel(`ahp:${this.options.prefix}${path}`);
     this.persistentFiles.set(path, persistentFile);
 
     const f = await fileHandle.getFile();
@@ -553,16 +599,35 @@ export class OPFSCoopSyncVFS extends FacadeVFS {
           // will close, leaking one access handle per attempt - which makes
           // every later open of the same database fail on a sidecar file it
           // holds itself.
-          const results = await Promise.allSettled(
-            DB_RELATED_FILE_SUFFIXES.map(async suffix => {
-              const persistentFile = this.persistentFiles.get(file.path + suffix);
-              if (persistentFile) {
-                persistentFile.accessHandle =
-                  await persistentFile.fileHandle.createSyncAccessHandle();
-              }
-            }));
-          const failure = results.find(result => result.status === 'rejected');
-          if (failure) throw failure.reason;
+          const deadline = performance.now() + HELD_RETRY_TIMEOUT;
+          while (true) {
+            const onError = [];
+            const results = await Promise.allSettled(
+              DB_RELATED_FILE_SUFFIXES.map(async suffix => {
+                const persistentFile = this.persistentFiles.get(file.path + suffix);
+                if (persistentFile) {
+                  persistentFile.accessHandle =
+                    await persistentFile.fileHandle.createSyncAccessHandle();
+                  onError.push(() => {
+                    persistentFile.accessHandle.close();
+                    persistentFile.accessHandle = null;
+                  });
+                }
+              }));
+            const failure = results.find(
+              /** @type {(result: PromiseSettledResult<void>) => result is PromiseRejectedResult} */
+              (result => result.status === 'rejected'));
+            if (!failure) break;
+            if (!HELD_ERRORS.has(failure.reason?.name) || performance.now() >= deadline) {
+              throw failure.reason;
+            }
+
+            // Still held by a connection that let go of the lock. Close what
+            // this attempt did get, keep the lock, and try again.
+            this.log?.(`access handles held for ${file.path}, retrying`);
+            for (const f of onError) f();
+            await new Promise(resolve => setTimeout(resolve, HELD_RETRY_INTERVAL));
+          }
         } catch (e) {
           this.log?.(`failed to create access handles for ${file.path}`, e);
           // Close any of the potentially opened access handles
