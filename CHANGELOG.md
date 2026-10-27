@@ -1,5 +1,11 @@
 # @journeyapps/wa-sqlite
 
+## 2.0.10
+
+### Patch Changes
+
+- 466c93a: Fix the Asyncify distribution build being overwritten by JSPI.
+
 ## 2.0.9
 
 ### Patch Changes
